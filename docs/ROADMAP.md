@@ -1,13 +1,16 @@
 # Yol Haritası — Implementasyon Ticket'ları
 
-Her ticket bağımsız bir PR. Sıra bağlayıcı: bir faz bitmeden sonrakine geçilmez.
+> **Durum: P0–P5 tamamlandı.** Kod `src/smauto/` altında, 140 test geçiyor.
+> Bu doküman ne yapıldığının kaydı ve P6 için sıradaki iş listesi olarak duruyor.
+> Uygulama sırasında plandan bilinçli sapmalar için `SPEC.md` §0.
+
 Kabul kriterleri **doğrulanabilir** yazıldı — "çalışıyor" değil, "şu komut şunu üretir".
 
 Detaylar için `SPEC.md`'nin ilgili bölümüne bak.
 
 ---
 
-## P0 — İskelet
+## ✅ P0 — İskelet
 
 > Hedef: `smauto doctor` yeşil dönüyor, CI geçiyor. Henüz iş yapmıyor.
 
@@ -48,7 +51,7 @@ Detaylar için `SPEC.md`'nin ilgili bölümüne bak.
 
 ---
 
-## P1 — Intake + medya çözümleme
+## ✅ P1 — Intake + medya çözümleme
 
 > Hedef: Telegram'a link atınca DB'ye medya + metin düşüyor.
 
@@ -108,7 +111,7 @@ Telegram'a düşüyor.
 
 ---
 
-## P2 — Render
+## ✅ P2 — Render
 
 > Hedef: `smauto process` sonunda diskte 1080×1920 mp4 ve/veya 1080×1350 jpg var.
 > **Projenin en yüksek değerli fazı — kalite burada belirleniyor.**
@@ -152,7 +155,7 @@ boyut ve mod (`RGB`, sRGB) doğru.
 
 ---
 
-## P3 — Telegram teslimi
+## ✅ P3 — Telegram teslimi
 
 > 🎯 **Bu fazın sonunda sistem uçtan uca kullanılabilir.**
 > Meta hesabı, R2, token — hiçbiri gerekmiyor.
@@ -182,7 +185,7 @@ işlenip Telegram'a düşüyor.
 
 ---
 
-## P4 — AI katmanı + dedupe
+## ✅ P4 — AI katmanı + dedupe
 
 ### P4-1 · pHash dedupe
 - `imagehash.phash`, video için 1. saniye karesi
@@ -213,7 +216,7 @@ alakasız görsel sayılmıyor.
 
 ---
 
-## P5 — Instagram otomatik paylaşım
+## ✅ P5 — Instagram otomatik paylaşım
 
 > Bundan öncesi olmadan buraya girilmez. `AUTO_PUBLISH` varsayılan `false` kalır.
 
@@ -234,7 +237,7 @@ gerçek bir test paylaşımı elle doğrulanıp `events`'e yazılıyor.
 
 ### P5-3 · Token yenileme
 - `refresh-tokens` komutu, `ig_refresh_token` akışı
-- `maintenance.yml` haftalık cron
+- haftalık cron (`publish.yml` içinde)
 - Token < 14 gün kaldıysa Telegram uyarısı
 
 **Kabul:** `doctor` kalan gün sayısını gösteriyor; yenileme sonrası `expires_at` ileriye kayıyor.
@@ -268,12 +271,15 @@ gerçek bir test paylaşımı elle doğrulanıp `events`'e yazılıyor.
 
 ---
 
-## Sonnet için notlar
+## Katkı notları
 
-- **Her ticket tek PR.** Kabul kriterini karşılayan test olmadan PR açma.
-- **`SPEC.md` sözleşmedir.** Sapman gerekirse önce `SPEC.md`'yi güncelle, sonra kodu yaz.
-- **Ağ çağrısı olan hiçbir şeyi test içinde gerçekten çağırma** — fixture veya mock kullan.
-- **P2-4'ün kabulü `ffprobe` çıktısı üzerinden.** Gözle "iyi görünüyor" yeterli değil;
-  Instagram'ın reddettiği çoğu video gözle sorunsuz görünüyor.
-- **Türkçe karakter ve emoji testini P2-1'de yaz, sonraya bırakma.**
+- **Her değişiklik tek PR.** Kabul kriterini karşılayan test olmadan açma.
+- **`SPEC.md` sözleşmedir.** Sapman gerekirse önce `SPEC.md`'yi güncelle (§0'a
+  satır ekle), sonra kodu yaz.
+- **Ağ çağrısı olan hiçbir şeyi test içinde gerçekten çağırma** — `tests/fixtures/`
+  veya `respx`/`MockTransport` kullan.
+- **Video değişikliklerinin kabulü `ffprobe` çıktısı üzerinden.** Gözle "iyi
+  görünüyor" yeterli değil; Instagram'ın reddettiği çoğu video gözle sorunsuz.
+- **Türkçe karakter ve emoji regresyonu** `test_render_real.py` içinde korunuyor;
+  kart şablonuna dokunursan o testi çalıştır.
 - Kod içi tanımlayıcılar ve commit mesajları İngilizce; dokümanlar Türkçe.

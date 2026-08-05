@@ -6,16 +6,18 @@
 
 Her şeyi baştan kurmana gerek yok. Faza göre gereken hesaplar:
 
-| Faz | Gereken | Süre |
+| Ne için | Gereken | Süre |
 |---|---|---|
-| P0–P2 | Anthropic API anahtarı (P4'e kadar opsiyonel) | — |
-| **P3** | **Telegram botu** | **5 dk** |
-| P4 | Anthropic API anahtarı | 5 dk |
-| P5 | Instagram Professional hesap + Meta app + Cloudflare R2 | ~45 dk |
-| P6 | X Developer hesabı + kredi | ~20 dk |
+| **Çalıştırmak** | **Telegram botu** | **5 dk** |
+| AI caption + içerik filtresi | Anthropic API anahtarı | 5 dk |
+| Instagram'a otomatik paylaşım | Instagram Professional hesap + Meta app + Cloudflare R2 | ~45 dk |
+| X beğeni polling'i (opsiyonel) | X Developer hesabı + kredi | ~20 dk |
 
-**P3'ten sonra sistem çalışır durumda.** P5'i hiç yapmasan da her gün telefonuna
-paylaşıma hazır Reels dosyaları düşer.
+> Adım adım kurulum için: **[`KULLANIM.md`](KULLANIM.md)**. Bu doküman referans
+> ve operasyon runbook'u.
+
+**Sadece Telegram botuyla sistem çalışır durumda.** Instagram entegrasyonunu hiç
+yapmasan da her gün telefonuna paylaşıma hazır Reels dosyaları düşer.
 
 ---
 
@@ -34,7 +36,7 @@ paylaşıma hazır Reels dosyaları düşer.
 
 ---
 
-## 3. Instagram (P5 — otomatik paylaşım için)
+## 3. Instagram (otomatik paylaşım için)
 
 Facebook Page **gerekmiyor**. Instagram API with Instagram Login kullanılıyor.
 
@@ -54,7 +56,7 @@ Facebook Page **gerekmiyor**. Instagram API with Instagram Login kullanılıyor.
 > hesabına tester olarak ekli olduğun için yayın yapabiliyorsun. App Review
 > sadece başkalarının hesaplarına hizmet veren uygulamalar için gerekli.
 
-> ⏰ **Token 60 günde bir yenilenmeli.** `maintenance.yml` bunu haftalık yapıyor.
+> ⏰ **Token 60 günde bir yenilenmeli.** `publish.yml` bunu haftalık yapıyor.
 > `smauto doctor` kalan gün sayısını gösterir; 14 günün altına düşünce Telegram'a
 > uyarı gelir. Bu adımı atlamak sistemi iki ay sonra sessizce durdurur.
 
@@ -65,7 +67,7 @@ Facebook Page **gerekmiyor**. Instagram API with Instagram Login kullanılıyor.
 
 ---
 
-## 4. Cloudflare R2 (P5 — medya barındırma)
+## 4. Cloudflare R2 (medya barındırma)
 
 Instagram, `video_url`'in **public erişilebilir** olmasını istiyor. R2 bunun için
 en ucuz yol: 10 GB depolama ücretsiz ve **egress ücreti yok** (S3'ün aksine).
@@ -91,7 +93,8 @@ en ucuz yol: 10 GB depolama ücretsiz ve **egress ücreti yok** (S3'ün aksine).
 |---|---|---|
 | `worker.yml` | her 10 dk | `ingest` + `process` |
 | `publish.yml` | slot saatleri | `publish` |
-| `maintenance.yml` | haftalık | `refresh-tokens` |
+| `publish.yml` | pazartesi 04:00 UTC | `refresh-tokens` |
+| `ci.yml` | her push | ruff + mypy + pytest |
 
 Secret'lar: repo → Settings → Secrets and variables → Actions.
 
@@ -112,6 +115,17 @@ ayda 2000 dakika:
 hepsi GitHub Secrets'ta. Repo private kalacaksa alternatifler: GitHub Pro
 ($4/ay, 3000 dk) veya Seçenek B.
 
+Workflow dosyaları hazır: `.github/workflows/worker.yml` (cron `*/10`),
+`publish.yml` (yayın slotları + haftalık token yenileme), `ci.yml` (lint/type/test).
+
+> **Durum kalıcılığı.** Actions runner'ı her koşuda sıfırdan başlar. `worker.yml`
+> veritabanını `actions/cache` ile taşıyor; cache düşerse kuyruk, dedupe geçmişi
+> ve Telegram offset'i sıfırlanır (Telegram son 24 saatin güncellemelerini tekrar
+> gönderir). Kalıcı çözüm: ücretsiz bir Postgres (Supabase/Neon) alıp
+> `DATABASE_URL` secret'ını ayarlamak. Render edilmiş medya `DELIVERY_MODE=instagram`
+> iken render anında R2'ye yükleniyor, o yüzden yayın aşamasında yerel dosyaya
+> ihtiyaç yok.
+
 #### Kurulum süresini sıfırla
 Her çalışmada Playwright Chromium indirmek ~60 sn yiyor. Bunun yerine CI'da bir
 Docker imajı build edip **GHCR**'a push et, workflow'lar `container:` ile onu
@@ -127,7 +141,7 @@ razıysan operasyonel olarak en rahat yol bu.
 
 ## 6. Maliyet tablosu
 
-### Varsayılan kurulum (P0–P4, Telegram teslimi)
+### Varsayılan kurulum (Telegram teslimi)
 
 | Kalem | Aylık |
 |---|---|
@@ -137,7 +151,7 @@ razıysan operasyonel olarak en rahat yol bu.
 | Anthropic API — Haiku, ~10 item/gün | $0.30 – $1 |
 | **Toplam** | **~$1** |
 
-### Tam kurulum (P5, Instagram otomatik)
+### Tam kurulum (Instagram otomatik)
 
 | Kalem | Aylık |
 |---|---|
@@ -150,7 +164,7 @@ razıysan operasyonel olarak en rahat yol bu.
 
 | Kalem | Aylık |
 |---|---|
-| X API likes polling (P6-1) | ~$1 – $5 |
+| X API likes polling (opsiyonel) | ~$1 – $5 |
 | VPS yerine Actions (Seçenek B) | ~€3.79 |
 | Caption için Haiku yerine Sonnet | ~$3 – $8 |
 
@@ -170,10 +184,10 @@ R2 erişimi — hepsini tek tabloda gösterir.
 
 | Belirti | Sebep | Çözüm |
 |---|---|---|
-| Emojiler kutu (□) çıkıyor | `Noto Color Emoji` yok | `render/fonts/` kontrol et, `doctor` çalıştır |
+| Emojiler kutu (□) çıkıyor | `Noto Color Emoji` yok | `smauto fetch-fonts`, sonra `smauto doctor` |
 | Instagram video'yu reddediyor | `yuv420p` değil veya ses stream'i yok | `ffprobe out_reel.mp4` — `SPEC.md` §4.2'deki tabloyla karşılaştır |
 | Reels sekmesinde görünmüyor | Süre 5–90 sn dışında veya oran 9:16 değil | süre normalizasyonu çalışıyor mu bak |
-| Paylaşım aniden durdu | IG token 60 günü doldurdu | `smauto refresh-tokens`; `maintenance.yml` neden çalışmamış bak |
+| Paylaşım aniden durdu | IG token 60 günü doldurdu | `smauto refresh-tokens`; `publish.yml`'ın haftalık koşusu neden çalışmamış bak |
 | Metin Instagram UI'ının altında kalıyor | safe area hesabı bozuk | `layout.py` testleri, `SPEC.md` §5.1 |
 | yt-dlp "login required" | X çerezleri bayatladı (günler içinde olur) | tarayıcıda x.com'a çıkış/giriş yap, çerezleri yeniden dışa aktar |
 | Aynı meme ikinci kez düştü | pHash eşiği dar | `SPEC.md` §6, Hamming eşiğini 6→8 çıkarmayı dene |

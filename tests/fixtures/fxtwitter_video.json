@@ -1,0 +1,32 @@
+{
+  "code": 200,
+  "tweet": {
+    "url": "https://x.com/ornek/status/1800000000000000002",
+    "id": "1800000000000000002",
+    "text": "Bunu izlemeden geçme 😂",
+    "author": {"name": "Örnek Hesap", "screen_name": "ornek", "avatar_url": "https://pbs.twimg.com/a.jpg"},
+    "created_timestamp": 1773479564,
+    "lang": "tr",
+    "media": {
+      "all": [
+        {
+          "type": "video",
+          "url": "https://video.twimg.com/ext_tw_video/1/vid/720x1280/clip.mp4",
+          "thumbnail_url": "https://pbs.twimg.com/thumb.jpg",
+          "width": 720,
+          "height": 1280,
+          "duration": 12.3
+        }
+      ],
+      "videos": [
+        {
+          "type": "video",
+          "url": "https://video.twimg.com/ext_tw_video/1/vid/720x1280/clip.mp4",
+          "width": 720,
+          "height": 1280,
+          "duration": 12.3
+        }
+      ]
+    }
+  }
+}

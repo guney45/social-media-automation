@@ -1,6 +1,24 @@
 # Teknik Spesifikasyon
 
-Implementasyonun sözleşmesi. `ROADMAP.md` ticket'ları buraya referans verir.
+Implementasyonun sözleşmesi.
+
+> **Durum:** P0–P5 uygulandı. Aşağıdaki §0, plan yazıldıktan sonra
+> implementasyon sırasında bilinçli olarak değiştirilen noktaları listeler.
+> Geri kalan her şey yazıldığı gibi uygulandı.
+
+---
+
+## 0. Plandan sapmalar (uygulama sırasında alınan kararlar)
+
+| Konu | Planda | Uygulamada | Gerekçe |
+|---|---|---|---|
+| Şema migration'ı | Alembic | `Base.metadata.create_all()` (`smauto init-db`) | Tek kullanıcılı bir projede Alembic'in kurulum maliyeti faydasını aşıyordu. Şema değişince eklenir; modeller Alembic'e uygun yazıldı. |
+| Telegram kütüphanesi | `python-telegram-bot` | `smauto/telegram/client.py` (httpx, ~230 satır) | PTB async; pipeline'ın tamamı senkron. İhtiyaç duyulan 9 metot için async runtime taşımak gereksizdi. |
+| Fontlar | Repoya gömülü | `smauto fetch-fonts` ile indiriliyor, gitignore'da | Noto Color Emoji 10 MB. Docker/CI build sırasında indiriliyor; sistemde varsa fontconfig fallback'i kullanılıyor. |
+| Font yükleme | `file://` `@font-face` | base64 data URI | `set_content` ile yüklenen sayfanın origin'i opaque; font'lar CORS'a tabi olduğu için `file://` src sessizce düşüyor ve kart serif'e dönüyordu. |
+| Görsel/video ayrımı | `duration > 0` | `format_name` + codec | ffprobe stillere de sahte süre veriyor; JPEG tek karelik Reels'e dönüşüyordu. |
+| R2'ye yükleme anı | Publish aşamasında | Render aşamasında | Render ve publish ayrı koşular; publish sırasında yerel dosya çoktan silinmiş oluyor (Actions'ta her zaman). |
+| Kart ölçüsü | Sabit font merdiveni | Önce metin kırp, sonra font küçült | Uzun tweet'ler 26 px'e inip okunmaz oluyordu; şimdi 600 karaktere kırpıp 38 px'te kalıyor. |
 
 ---
 
@@ -8,65 +26,74 @@ Implementasyonun sözleşmesi. `ROADMAP.md` ticket'ları buraya referans verir.
 
 ```
 src/smauto/
-  __init__.py
-  cli.py                  # typer: ingest / process / publish / refresh-tokens / doctor
-  config.py               # pydantic-settings, tüm env değişkenleri
+  cli.py                  # typer: init-db / ingest / process / publish / doctor / ...
+  config.py               # pydantic-settings, tüm env değişkenleri (§10)
   logging.py              # structlog, JSON çıktı
+  doctor.py               # sağlık kontrolleri (§12)
+  pipeline.py             # aşama orkestrasyonu: fetch → screen → render → deliver
 
   db/
     models.py             # SQLAlchemy modelleri (§2)
+    states.py             # durum makinesi (§2.1)
+    repo.py               # ortak veri erişimi, transition, retry/backoff
     session.py
-    migrations/           # alembic
 
-  intake/
-    base.py               # SourceAdapter protokolü
-    telegram.py           # varsayılan intake
-    x_likes.py            # P6, opsiyonel
-    bookmarklet.py        # P6, opsiyonel
+  media/
+    probe.py              # ffmpeg/ffprobe sarmalayıcı, görsel/video ayrımı
 
   resolve/
-    base.py               # Resolver protokolü + ResolvedPost (§3)
+    base.py               # Resolver protokolü + ResolvedPost (§3.1)
     chain.py              # fallback zinciri
+    download.py           # uzak medyayı diske indirme
     fxtwitter.py
     ytdlp.py
     gallerydl.py
-    xapi.py               # P6, opsiyonel
-    manual.py
 
   screen/
-    dedupe.py             # pHash + tweet_id
-    ai_gate.py            # Claude içerik filtresi
-    blocklist.py
+    dedupe.py             # pHash (§6)
+    ai_gate.py            # Claude içerik filtresi (§7.1)
 
   render/
-    card.py               # Playwright HTML→PNG
-    templates/
-      tweet_card.html.j2
-      card.css
+    card.py               # Playwright HTML→PNG (§5.5)
+    browser.py            # Chromium bulma (yönetilen imajlar için)
+    fonts.py              # font indirme/keşif, data URI gömme
     layout.py             # safe area + yerleşim hesabı (§5.2)
-    video.py              # ffmpeg reels kompozisyonu
-    image.py              # Pillow feed/story kompozisyonu
-    fonts/                # Inter + Noto Color Emoji (repoda gömülü)
+    video.py              # ffmpeg reels kompozisyonu (§5.3)
+    image.py              # Pillow feed kompozisyonu (§5.4)
+    templates/tweet_card.html.j2
+    fonts/                # fetch-fonts ile doldurulur, gitignore'da
+
+  ai/
+    client.py             # Anthropic çağrısı, forced tool call ile JSON
 
   caption/
-    writer.py
-    prompts.py
+    writer.py             # caption + hashtag (§7.2)
 
   storage/
     base.py               # Storage protokolü
     local.py
     r2.py
 
+  telegram/
+    client.py             # senkron Bot API istemcisi
+    intake.py             # getUpdates, komutlar, inline buton callback'leri
+    delivery.py           # önizleme mesajı, caption kompozisyonu, bildirimler
+
   publish/
-    telegram_delivery.py  # önizleme + inline butonlar
-    instagram.py          # container → poll → publish
-    tokens.py             # long-lived token yenileme
+    instagram.py          # container → poll → publish (§3.4)
+    runner.py             # zamanlama + yayın döngüsü
+    tokens.py             # 60 günlük token yenileme
 
   schedule/
-    planner.py            # slot ataması
+    planner.py            # slot ataması (§9)
 
 tests/
-  fixtures/               # örnek tweet JSON'ları, küçük mp4/jpg örnekleri
+  fixtures/               # kayıtlı fxtwitter yanıtları
+  test_layout.py          # safe area geometrisi
+  test_probe.py           # görsel/video ayrımı
+  test_render_real.py     # gerçek Chromium + ffmpeg, ffprobe doğrulaması
+  test_pipeline.py        # uçtan uca, ağ stub'lanmış
+  test_intake.py          # Telegram komutları ve butonları
   ...
 ```
 

@@ -228,7 +228,7 @@ Bu sayede iki deploy hedefi aynı koddan çalışır:
 **A) GitHub Actions (varsayılan, $0)**
 - `worker.yml` — cron, `ingest` + `process`
 - `publish.yml` — cron, slot saatlerinde `publish`
-- `maintenance.yml` — haftalık `refresh-tokens`
+- `publish.yml` ayrıca haftalık `refresh-tokens` çalıştırır
 - State: Turso veya Supabase (ücretsiz), medya: R2
 - ⚠️ Private repoda ayda 2000 dakika ücretsiz ve **her job 1 dakikaya yuvarlanıyor**.
   Karar: **repoyu public yap** → sınırsız dakika. Private kalacaksa worker periyodu
