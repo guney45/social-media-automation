@@ -27,8 +27,8 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_ALLOWED_USER_IDS: ${{ secrets.TELEGRAM_ALLOWED_USER_IDS }}
       TELEGRAM_TARGET_CHAT_ID: ${{ secrets.TELEGRAM_TARGET_CHAT_ID }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      AI_ENABLED: ${{ vars.AI_ENABLED || 'true' }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || '' }}
+      AI_ENABLED: ${{ vars.AI_ENABLED || 'false' }}
       DELIVERY_MODE: ${{ vars.DELIVERY_MODE || 'telegram' }}
       AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'false' }}
       STORAGE_BACKEND: ${{ vars.STORAGE_BACKEND || 'local' }}
