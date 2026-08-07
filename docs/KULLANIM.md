@@ -24,101 +24,114 @@ verdiğin yer.
 
 ---
 
-## Bölüm 2 — Projeyi kur (5 dk)
+## Bölüm 2 — Mac'e kur (~15 dk)
 
-### Neden kendi bilgisayarıma kuruyorum?
+Sıfırdan bir Mac varsayıyorum. Komutları sırayla, tek tek yapıştır — her adımda
+bir doğrulama satırı var, çalışmazsa oradan devam etme.
 
-Kurmak **zorunda değilsin** — üç seçenek var:
+> **Neden kendi bilgisayarıma kuruyorum?** İlk kurulumda bir şeyin eksik olması
+> çok olası (bot token'ı yanlış, bota `/start` yazılmamış, font inmemiş).
+> `smauto doctor` bunları anında söylüyor. Sistemin çalıştığını gördükten sonra
+> Bölüm 5'te Docker veya GitHub Actions'a taşıyorsun; oradan sonra bilgisayarın
+> kapalıyken de çalışıyor.
 
-| Yol | Ne zaman |
-|---|---|
-| **Yerel kurulum** | Önerilen başlangıç. Hata olursa saniyeler içinde görürsün. |
-| Docker | Bilgisayarına Python/ffmpeg kurmak istemiyorsan. Docker Desktop gerekir. |
-| Sadece GitHub Actions | Hiçbir şey kurmak istemiyorsan. Ama her deneme 10 dakika sürer ve hata ayıklamak zor. |
-
-Yerel kurulumu öneriyorum çünkü ilk defa kurarken bir şeyin eksik olması çok
-olası (bot token'ı yanlış, `/start` yazılmamış, font inmemiş). `smauto doctor`
-bunları anında söylüyor; Actions'ta aynı şeyi anlamak için log kurcalaman gerekir.
-
-Sistem çalıştığını gördükten sonra Bölüm 5'te otomatiğe bağlıyorsun ve
-bilgisayarın kapalıyken de çalışıyor.
-
-### venv gerekiyor mu?
-
-**Hayır, elle bir şey yapmana gerek yok.** `uv sync` proje klasöründe otomatik
-olarak `.venv/` oluşturuyor ve paketleri oraya kuruyor — sistem Python'una
-dokunmuyor. `uv run ...` da otomatik o ortamı kullanıyor.
-
-`source .venv/bin/activate` yazmana gerek yok. Yazmak istersen de çalışır,
-sonra `smauto doctor` diye doğrudan çağırabilirsin.
-
-Python 3.12'yi de uv kendi indiriyor; ayrıca Python kurman gerekmiyor.
+> **venv gerekiyor mu? Hayır.** `uv sync` proje klasöründe otomatik `.venv/`
+> oluşturup paketleri oraya kuruyor, sistem Python'una dokunmuyor. `uv run ...`
+> da otomatik onu kullanıyor — `activate` yazmana gerek yok. Python 3.12'yi de
+> uv kendi indiriyor.
 
 ---
 
-### macOS kurulumu
+### Adım 1 — Homebrew
+
+macOS'ta ffmpeg'i kuracak paket yöneticisi. Kurulum sırasında Mac şifreni
+soracak; Xcode Command Line Tools yoksa onu da indirir (~1–2 GB, birkaç dakika).
+`git` de bununla birlikte geliyor.
 
 ```bash
-# 1) uv'yi PATH'e ekle (kurulum sonrası bu adım şart)
-source $HOME/.local/bin/env
-uv --version          # çalışmalı
-
-# 2) Homebrew — yoksa (ffmpeg'i onunla kuracağız)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
 
-# Apple Silicon'da Homebrew PATH'e kendiliğinden girmiyor:
+Apple Silicon'da (M1/M2/M3/M4) Homebrew PATH'e kendiliğinden girmiyor:
+
+```bash
 echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
 eval "$(/opt/homebrew/bin/brew shellenv)"
-brew --version        # çalışmalı
+```
 
-# 3) ffmpeg
+```bash
+brew --version        # ✅ sürüm yazmalı
+```
+
+### Adım 2 — ffmpeg
+
+Videoyu kesen, birleştiren, Instagram formatına çeviren araç. Bağımlılıklarıyla
+birlikte büyük (~1 GB), birkaç dakika sürer — normal.
+
+```bash
 brew install ffmpeg
+```
 
-# 4) proje
+```bash
+ffmpeg -version | head -1     # ✅ sürüm yazmalı
+ffprobe -version | head -1    # ✅ sürüm yazmalı
+```
+
+### Adım 3 — uv
+
+Python paket yöneticisi. Python'u da kendisi indiriyor.
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Kurulum bittiğinde PATH'e almak için (bu adım şart, atlarsan
+`command not found` alırsın):
+
+```bash
+source $HOME/.local/bin/env
+```
+
+```bash
+uv --version          # ✅ sürüm yazmalı
+```
+
+### Adım 4 — Projeyi indir
+
+```bash
+cd ~
 git clone https://github.com/guney45/social-media-automation.git
 cd social-media-automation
+```
+
+Bundan sonraki tüm komutlar bu klasörün içinde çalışıyor. Terminali kapatıp
+açarsan `cd ~/social-media-automation` ile geri dön.
+
+### Adım 5 — Bağımlılıklar
+
+```bash
 uv sync
+```
+
+Tarayıcı (tweet kartını çizmek için) ve fontlar (Türkçe karakter + emoji):
+
+```bash
 uv run playwright install chromium
 uv run smauto fetch-fonts
 ```
 
-> `brew install ffmpeg` bağımlılıklarıyla birlikte biraz büyük (~1 GB) ve
-> birkaç dakika sürer. Normal.
-
-### Linux kurulumu
-
 ```bash
-source $HOME/.local/bin/env
-sudo apt update && sudo apt install -y ffmpeg
-
-git clone https://github.com/guney45/social-media-automation.git
-cd social-media-automation
-uv sync
-uv run playwright install --with-deps chromium
-uv run smauto fetch-fonts
+uv run smauto version      # ✅ 0.1.0 yazmalı
 ```
 
-### Hiç kurmak istemiyorsan: Docker
-
-```bash
-git clone https://github.com/guney45/social-media-automation.git
-cd social-media-automation
-cp .env.example .env      # aşağıdaki "Ayarlar" bölümünü doldur
-docker compose build
-docker compose run --rm smauto doctor
-docker compose run --rm smauto init-db
-```
-
-Sonrasında her `uv run smauto X` komutunun karşılığı
-`docker compose run --rm smauto X`.
-
-### Ayarlar
+### Adım 6 — Ayarlar
 
 ```bash
 cp .env.example .env
+open -e .env               # TextEdit'te açar
 ```
 
-`.env` dosyasını aç, şu üç satırı doldur:
+Şu üç satırı Bölüm 1'de aldığın değerlerle doldur:
 
 ```bash
 TELEGRAM_BOT_TOKEN=7123456789:AAH8x...     # BotFather'dan
@@ -126,23 +139,55 @@ TELEGRAM_ALLOWED_USER_IDS=512345678        # @userinfobot'tan
 TELEGRAM_TARGET_CHAT_ID=512345678          # aynı numara
 ```
 
-AI caption ve içerik filtresi istiyorsan (aylık ~$0.50):
+AI caption ve içerik filtresi istiyorsan (aylık ~$0.50) bir de bunu:
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...               # console.anthropic.com
 ```
 
-İstemiyorsan `AI_ENABLED=false` yaz, sistem AI'sız çalışır (caption'ı elle
-yazarsın).
+İstemiyorsan `.env` içinde `AI_ENABLED=false` yap — sistem AI'sız çalışır,
+caption'ı elle yazarsın.
 
-### Doğrula
+Kaydet ve kapat.
+
+### Adım 7 — Doğrula
 
 ```bash
 uv run smauto init-db
 uv run smauto doctor
 ```
 
-Tablo hepsi ✓ olmalı. Bir şey ✗ ise oradaki mesaj ne yapman gerektiğini yazar.
+Çıktı böyle bir tablo:
+
+```
+┏━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃    ┃ Kontrol          ┃ Sonuç                                 ┃
+┡━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ ✓  │ ffmpeg           │ 8.0                                   │
+│ ✓  │ chromium         │ ~/Library/Caches/ms-playwright/...    │
+│ ✓  │ fontlar          │ InterVariable.ttf + emoji             │
+│ ✓  │ emoji testi      │ 161 renk                              │
+│ ✓  │ veritabanı       │ 6 tablo                               │
+│ ✓  │ telegram         │ @senin_botun                          │
+│ ✓  │ anthropic        │ claude-haiku-4-5-20251001             │
+│ ✓  │ instagram        │ DELIVERY_MODE=telegram — gerekmiyor   │
+│ ✓  │ secret sızıntısı │ .env takip edilmiyor                  │
+└────┴──────────────────┴───────────────────────────────────────┘
+
+Her şey yolunda.
+```
+
+Bir satır ✗ ise ne yapman gerektiğini yazıyor. En sık çıkanlar:
+
+| Satır | Anlamı |
+|---|---|
+| `telegram: TELEGRAM_BOT_TOKEN boş` | `.env`'i kaydetmemişsin veya yanlış klasördesin |
+| `telegram: TELEGRAM_ALLOWED_USER_IDS boş` | @userinfobot'tan aldığın numarayı gir |
+| `telegram: Unauthorized` | Token yanlış kopyalanmış |
+| `fontlar` / `emoji testi` | `uv run smauto fetch-fonts` |
+| `chromium bulunamadı` | `uv run playwright install chromium` |
+
+Hepsi ✓ ise Bölüm 3'e geç.
 
 ---
 
@@ -204,13 +249,15 @@ Terminalden:
 
 ## Bölüm 5 — Otomatikleştir (elle komut çalıştırmayı bırak)
 
-Şu ana kadar `ingest` ve `process`'i elle çalıştırdın. Bunu otomatiğe bağlamanın
-iki yolu var.
+Şu ana kadar `ingest` ve `process`'i elle çalıştırdın. Sistemin çalıştığını
+gördüğüne göre artık otomatiğe bağlayabilirsin. Üç seçenek, kolaydan zora:
 
-### Seçenek A — Kendi bilgisayarında / sunucunda (en basit)
+### Seçenek A — Mac'te döngü (30 saniye, hemen dene)
+
+Terminali açık bıraktığın sürece çalışır. Kapatınca durur.
 
 ```bash
-# her dakika kontrol eder
+cd ~/social-media-automation
 while true; do
   uv run smauto ingest
   uv run smauto process
@@ -218,16 +265,31 @@ while true; do
 done
 ```
 
-Kalıcı olsun istiyorsan Docker:
+Durdurmak için `Ctrl+C`.
+
+### Seçenek B — Docker (Mac açıkken arka planda)
+
+Terminal kapansa da çalışır, Mac uykuya girince durur.
+Önce [Docker Desktop](https://www.docker.com/products/docker-desktop/) kur, sonra:
 
 ```bash
-cp .env.example .env    # doldurulmuş halini kullan
-docker compose build
+cd ~/social-media-automation
+docker compose build                       # ilk seferde ~5 dk
+docker compose run --rm smauto doctor      # ✅ hepsi ✓ olmalı
 docker compose run --rm smauto init-db
-docker compose up -d worker
+docker compose up -d worker                # arka planda başlat
 ```
 
-### Seçenek B — GitHub Actions ($0, bilgisayarın kapalıyken de çalışır)
+```bash
+docker compose logs -f worker              # ne yaptığını izle
+docker compose down                        # durdur
+```
+
+Docker `.env` dosyanı olduğu gibi kullanıyor, ayrıca bir ayar gerekmiyor.
+Bu moddayken her `uv run smauto X` komutunun karşılığı
+`docker compose run --rm smauto X`.
+
+### Seçenek C — GitHub Actions ($0, bilgisayarın kapalıyken de çalışır)
 
 1. **Repoyu public yap.**
    Neden: GitHub her job'ı en az 1 dakikaya yuvarlıyor. Private repoda ayda

@@ -22,12 +22,18 @@ ENV_VAR = "SMAUTO_CHROMIUM_PATH"
 _SEARCH_ROOTS = (
     os.environ.get("PLAYWRIGHT_BROWSERS_PATH"),
     "/opt/pw-browsers",
-    str(Path.home() / ".cache" / "ms-playwright"),
+    str(Path.home() / ".cache" / "ms-playwright"),  # Linux
+    str(Path.home() / "Library" / "Caches" / "ms-playwright"),  # macOS
 )
 
 #: Full Chromium first: the headless shell cannot screenshot with a transparent
 #: background on every build, and we depend on that.
-_BINARY_NAMES = ("chrome", "headless_shell", "chrome-headless-shell")
+_BINARY_PATTERNS = (
+    "chrome-*/chrome",  # Linux
+    "chrome-*/Chromium.app/Contents/MacOS/Chromium",  # macOS
+    "chrome-*/headless_shell",
+    "chrome-*/chrome-headless-shell",
+)
 
 
 def find_chromium() -> Path | None:
@@ -52,10 +58,10 @@ def _candidates() -> Iterator[Path]:
         base = Path(root)
         if not base.is_dir():
             continue
-        for name in _BINARY_NAMES:
+        for pattern in _BINARY_PATTERNS:
             # Newest revision first: directory names end with the build number.
             for directory in sorted(base.glob("chromium*"), reverse=True):
-                yield from sorted(directory.glob(f"chrome-*/{name}"))
+                yield from sorted(directory.glob(pattern))
 
 
 def launch_kwargs() -> dict[str, object]:
