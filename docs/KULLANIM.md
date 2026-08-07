@@ -26,28 +26,91 @@ verdiğin yer.
 
 ## Bölüm 2 — Projeyi kur (5 dk)
 
-### Gereksinimler
-- Python 3.12+
-- ffmpeg
-- git
+### Neden kendi bilgisayarıma kuruyorum?
 
-### Kurulum
+Kurmak **zorunda değilsin** — üç seçenek var:
+
+| Yol | Ne zaman |
+|---|---|
+| **Yerel kurulum** | Önerilen başlangıç. Hata olursa saniyeler içinde görürsün. |
+| Docker | Bilgisayarına Python/ffmpeg kurmak istemiyorsan. Docker Desktop gerekir. |
+| Sadece GitHub Actions | Hiçbir şey kurmak istemiyorsan. Ama her deneme 10 dakika sürer ve hata ayıklamak zor. |
+
+Yerel kurulumu öneriyorum çünkü ilk defa kurarken bir şeyin eksik olması çok
+olası (bot token'ı yanlış, `/start` yazılmamış, font inmemiş). `smauto doctor`
+bunları anında söylüyor; Actions'ta aynı şeyi anlamak için log kurcalaman gerekir.
+
+Sistem çalıştığını gördükten sonra Bölüm 5'te otomatiğe bağlıyorsun ve
+bilgisayarın kapalıyken de çalışıyor.
+
+### venv gerekiyor mu?
+
+**Hayır, elle bir şey yapmana gerek yok.** `uv sync` proje klasöründe otomatik
+olarak `.venv/` oluşturuyor ve paketleri oraya kuruyor — sistem Python'una
+dokunmuyor. `uv run ...` da otomatik o ortamı kullanıyor.
+
+`source .venv/bin/activate` yazmana gerek yok. Yazmak istersen de çalışır,
+sonra `smauto doctor` diye doğrudan çağırabilirsin.
+
+Python 3.12'yi de uv kendi indiriyor; ayrıca Python kurman gerekmiyor.
+
+---
+
+### macOS kurulumu
 
 ```bash
+# 1) uv'yi PATH'e ekle (kurulum sonrası bu adım şart)
+source $HOME/.local/bin/env
+uv --version          # çalışmalı
+
+# 2) Homebrew — yoksa (ffmpeg'i onunla kuracağız)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Apple Silicon'da Homebrew PATH'e kendiliğinden girmiyor:
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+brew --version        # çalışmalı
+
+# 3) ffmpeg
+brew install ffmpeg
+
+# 4) proje
 git clone https://github.com/guney45/social-media-automation.git
 cd social-media-automation
-
-# uv (Python paket yöneticisi) — yoksa:
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# ffmpeg — yoksa:
-sudo apt install ffmpeg           # Ubuntu/Debian
-brew install ffmpeg               # macOS
-
 uv sync
 uv run playwright install chromium
 uv run smauto fetch-fonts
 ```
+
+> `brew install ffmpeg` bağımlılıklarıyla birlikte biraz büyük (~1 GB) ve
+> birkaç dakika sürer. Normal.
+
+### Linux kurulumu
+
+```bash
+source $HOME/.local/bin/env
+sudo apt update && sudo apt install -y ffmpeg
+
+git clone https://github.com/guney45/social-media-automation.git
+cd social-media-automation
+uv sync
+uv run playwright install --with-deps chromium
+uv run smauto fetch-fonts
+```
+
+### Hiç kurmak istemiyorsan: Docker
+
+```bash
+git clone https://github.com/guney45/social-media-automation.git
+cd social-media-automation
+cp .env.example .env      # aşağıdaki "Ayarlar" bölümünü doldur
+docker compose build
+docker compose run --rm smauto doctor
+docker compose run --rm smauto init-db
+```
+
+Sonrasında her `uv run smauto X` komutunun karşılığı
+`docker compose run --rm smauto X`.
 
 ### Ayarlar
 
