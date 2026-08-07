@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import time
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationInfo, field_validator, model_validator
+from pydantic_core import PydanticUndefined
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DeliveryMode = Literal["telegram", "instagram"]
@@ -40,6 +41,8 @@ class Settings(BaseSettings):
     ai_model: str = "claude-haiku-4-5-20251001"
     ai_enabled: bool = True
     ai_min_score: int = 45
+    #: Set when AI was requested but no API key was supplied. Not an env var.
+    ai_auto_disabled: bool = False
 
     # --- Render ---
     card_theme: CardTheme = "dark"
@@ -123,6 +126,25 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------------
+    @field_validator("*", mode="before")
+    @classmethod
+    def _blank_means_unset(cls, value: Any, info: ValidationInfo) -> Any:
+        """An empty environment variable means "not configured", not "empty value".
+
+        Two places produce blanks that would otherwise crash on load: the
+        shipped `.env.example` leaves optional keys empty, and GitHub Actions
+        turns a secret that was never created into an empty string. Both should
+        behave exactly as if the variable were absent.
+        """
+        if value != "" or not info.field_name:
+            return value
+        field = cls.model_fields.get(info.field_name)
+        if field is None:
+            return value
+        if field.default is not PydanticUndefined:
+            return field.default
+        return None
+
     @field_validator("ai_min_score")
     @classmethod
     def _score_range(cls, v: int) -> int:
@@ -140,7 +162,12 @@ class Settings(BaseSettings):
     @field_validator("timezone")
     @classmethod
     def _valid_tz(cls, v: str) -> str:
-        ZoneInfo(v)  # raises if unknown
+        try:
+            ZoneInfo(v)
+        except Exception as exc:
+            # ZoneInfoNotFoundError is a KeyError, which pydantic does not wrap
+            # into a validation error — it would escape as a raw traceback.
+            raise ValueError(f"unknown timezone {v!r} (e.g. Europe/Istanbul)") from exc
         return v
 
     @field_validator("publish_slots")
@@ -179,8 +206,13 @@ class Settings(BaseSettings):
                 if not getattr(self, name):
                     missing.append(name.upper())
 
+        # AI is an enhancement, not a requirement — the pipeline has fallbacks
+        # for a missing caption and a missing content verdict. Refusing to boot
+        # over it would strand anyone who copied .env.example without an API
+        # key, so switch it off instead and let `doctor` say so out loud.
         if self.ai_enabled and not self.anthropic_api_key:
-            missing.append("ANTHROPIC_API_KEY (or set AI_ENABLED=false)")
+            self.ai_enabled = False
+            self.ai_auto_disabled = True
 
         if self.x_api_enabled and not (self.x_refresh_token or self.x_bearer_token):
             missing.append("X_REFRESH_TOKEN or X_BEARER_TOKEN")
