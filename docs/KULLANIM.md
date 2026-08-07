@@ -291,29 +291,210 @@ Bu moddayken her `uv run smauto X` komutunun karşılığı
 
 ### Seçenek C — GitHub Actions ($0, bilgisayarın kapalıyken de çalışır)
 
-1. **Repoyu public yap.**
-   Neden: GitHub her job'ı en az 1 dakikaya yuvarlıyor. Private repoda ayda
-   2000 dakika ücretsiz; 10 dakikada bir çalışan worker bunu aşar. Public
-   repoda dakika sınırsız. Kodda secret yok, hepsi GitHub Secrets'ta duruyor.
+Bu, bilgisayarını tamamen devreden çıkaran seçenek. Mac'in kapalıyken de,
+sen tatildeyken de çalışır. Ücretsiz.
 
-2. **Secret'ları gir:** repo → Settings → Secrets and variables → Actions →
-   *New repository secret*:
+### C.0 — GitHub Actions nedir?
 
-   | İsim | Değer |
-   |---|---|
-   | `TELEGRAM_BOT_TOKEN` | BotFather token'ın |
-   | `TELEGRAM_ALLOWED_USER_IDS` | numeric user id'n |
-   | `TELEGRAM_TARGET_CHAT_ID` | aynı numara |
-   | `ANTHROPIC_API_KEY` | (AI kullanıyorsan) |
+Kısaca: **GitHub'ın kendi sunucularında senin komutlarını çalıştıran servis.**
 
-3. Actions sekmesinden `worker` workflow'unu bir kez **Run workflow** ile
-   elle çalıştır, çalıştığını gör. Sonrası 10 dakikada bir otomatik.
+Mantığı şu: repona `.github/workflows/` klasörüne bir talimat dosyası koyuyorsun,
+GitHub o dosyayı okuyup "şu zaman geldiğinde şu komutları çalıştır" diyor. O anda
+bulutta boş bir Ubuntu bilgisayarı ayağa kaldırıyor, repoyu indiriyor, komutları
+çalıştırıyor, sonra bilgisayarı siliyor.
 
-> ⚠️ **Durum kalıcılığı.** Actions'ta veritabanı `actions/cache` ile koşular
-> arasında taşınıyor — bu "best effort"tur, cache düşerse kuyruk ve tekrar
-> kontrolü geçmişi sıfırlanır. Ciddiye alacaksan ücretsiz bir Postgres al
-> (Supabase veya Neon) ve `DATABASE_URL` secret'ını onun bağlantı adresine
-> ayarla. Tek değişiklik bu.
+Bu projede üç talimat dosyası var, hepsi repoda hazır:
+
+| Dosya | Ne zaman çalışır | Ne yapar |
+|---|---|---|
+| `worker.yml` | 10 dakikada bir | Telegram'dan yeni linkleri alır, işler, sana geri gönderir |
+| `publish.yml` | Yayın saatlerinde + pazartesileri | Instagram'a paylaşır, token yeniler (Bölüm 6 kuruluysa) |
+| `ci.yml` | Kodda değişiklik olunca | Testleri çalıştırır — sen ilgilenmiyorsan görmezden gel |
+
+Bilmen gereken üç terim:
+
+- **Workflow**: talimat dosyası. Yukarıdaki üç dosyanın her biri bir workflow.
+- **Run (koşu)**: bir workflow'un tek bir çalışması. Her koşunun ayrı logu var.
+- **Cron**: "her 10 dakikada bir" gibi zamanlama kuralı. `*/10 * * * *` bunu ifade
+  ediyor — dosyanın içinde yazıyor, dokunmana gerek yok.
+
+---
+
+### C.1 — Kod `main` branch'inde olmalı ⚠️
+
+**Bu en sık atlanan adım.** GitHub, zamanlanmış (cron) workflow'ları **yalnızca
+varsayılan branch'te** çalıştırır — bu repoda `main`. Kod başka bir branch'te
+duruyorsa hiçbir şey olmaz, üstelik hata da vermez.
+
+Şu an `main` güncel (PR'ı merge etmiştin). Kontrol etmek için:
+repo sayfası → sol üstteki branch seçicide **main** seçiliyken
+`.github/workflows/` klasörünün göründüğünden emin ol.
+
+> İleride kodda bir değişiklik olursa (mesela bende bir düzeltme yaparsam),
+> `main`'e merge etmeden Actions eski kodu çalıştırmaya devam eder.
+
+### C.2 — Repoyu public yap
+
+**Neden gerekiyor:** GitHub her koşuyu **en az 1 dakika** olarak faturalandırıyor,
+30 saniye sürse bile. Ücretsiz planda private repo için ayda **2000 dakika** var.
+
+```
+10 dakikada bir worker  = ayda 4320 koşu → en az 4320 dakika   ❌ kota aşılır
+30 dakikada bir worker  = ayda 1440 koşu → 1440 dakika
+  + içerik render eden koşular (~10/gün × ~3 dk)      →  +600 dakika
+  + CI ve publish                                     →  +150 dakika
+                                              toplam ≈ 2190 dakika  ❌ yine aşar
+```
+
+Public repoda dakika **sınırsız**. Kodda hiçbir gizli bilgi yok — token'lar
+`.env` dosyasında ve o dosya `.gitignore`'da, GitHub'a hiç gitmiyor.
+
+**Nasıl:** repo sayfası → **Settings** → en altta **Danger Zone** →
+*Change repository visibility* → **Change to public** → repo adını yazarak onayla.
+
+> **Önce şunu kontrol et:** daha önce yanlışlıkla `.env` commit'lemiş olmayasın.
+> Terminalde `git log --all --oneline -- .env` yaz. Çıktı boşsa temizsin.
+> Bir şey çıkarsa public yapma, önce bana söyle.
+
+Public yapmak istemiyorsan alternatifler: GitHub Pro ($4/ay, 3000 dakika),
+`worker.yml` içindeki cron'u `*/30 * * * *` yapmak, ya da Seçenek B (Docker).
+
+### C.3 — Secret'ları gir
+
+Token'lar repoya yazılmaz; GitHub'ın şifreli kasasına konur. Actions çalışırken
+oradan okur, loglarda `***` olarak görünür.
+
+**Nasıl:** repo → **Settings** → sol menüde **Secrets and variables** →
+**Actions** → yeşil **New repository secret** butonu. Her biri için ad + değer
+girip **Add secret**.
+
+| Secret adı | Değer | Zorunlu mu |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | BotFather'ın verdiği token | ✅ Evet |
+| `TELEGRAM_ALLOWED_USER_IDS` | @userinfobot'tan aldığın numara | ✅ Evet |
+| `TELEGRAM_TARGET_CHAT_ID` | Aynı numara | ✅ Evet |
+| `ANTHROPIC_API_KEY` | `sk-ant-...` | ❌ Yoksa AI kapalı çalışır |
+| `DATABASE_URL` | Postgres adresi (C.7) | ❌ Yoksa geçici veritabanı |
+
+Adları **birebir** yaz — büyük harf, alt çizgi, boşluk yok.
+
+> Girdiğin bir secret'ı sonradan **okuyamazsın**, sadece üzerine yazabilirsin.
+> Bu normal.
+
+> Aynı sayfadaki **Variables** sekmesi gizli olmayan ayarlar için
+> (`DELIVERY_MODE`, `AUTO_PUBLISH` gibi). Şimdilik gerek yok — varsayılanlar
+> Telegram teslimi için zaten doğru.
+
+### C.4 — İlk koşuyu elle başlat
+
+Cron'u beklemeden çalıştığını görelim.
+
+1. Repo → üstteki **Actions** sekmesi
+2. İlk girişte *"Workflows aren't being run on this forked repository"* veya
+   benzeri bir uyarı çıkarsa yeşil **I understand my workflows, go ahead and
+   enable them** butonuna bas
+3. Sol listeden **worker**'a tıkla
+4. Sağda **Run workflow** açılır menüsü → Branch: **main** → yeşil
+   **Run workflow** butonu
+5. Sayfayı yenile — sarı nokta ile yeni bir koşu belirir
+
+İlk koşu **5–8 dakika** sürer (ffmpeg ve Chromium indiriliyor). Sonrakiler
+cache sayesinde 1–2 dakika.
+
+Test etmek için önce Telegram'daki botuna bir link at, sonra bu koşuyu başlat.
+
+### C.5 — Logu okumak
+
+Koşuya tıkla → sol tarafta **run** işi → adımlar listelenir. Her adımın soluna
+tıklayınca çıktısı açılır.
+
+Bakman gereken iki adım:
+
+**`Ingest`** — Telegram'dan ne aldığı:
+```
+updates=1 new=1 files=0 dupes=0 commands=0 buttons=0
+```
+`new=1` → bir link kuyruğa girdi. Hepsi `0` ise Telegram'a bir şey atmamışsın
+ya da secret'lar yanlış.
+
+**`Process`** — ne yaptığı:
+```
+advanced=4 delivered=1 rejected=0 failed=0
+```
+`delivered=1` → önizleme Telegram'a gönderildi, telefonunu kontrol et.
+
+Yeşil ✓ = başarılı, kırmızı ✗ = hata. Kırmızıysa hangi adımda patladığını
+adım listesinden görürsün.
+
+### C.6 — Cron ne zaman çalışır (ve ne zaman çalışmaz)
+
+Kurduktan sonra bilmen gereken üç şey:
+
+1. **Gecikme normaldir.** GitHub'ın cron'u garantili değil; yoğun saatlerde
+   5–15 dakika gecikebilir, bazen bir koşu atlanır. `*/10` yazması "tam
+   10 dakikada bir" demek değil, "ortalama 10 dakikada bir" demek.
+
+2. **60 gün kuralı.** Repoda 60 gün boyunca hiç commit olmazsa GitHub
+   zamanlanmış workflow'ları **otomatik kapatır** ve sana mail atar. Actions
+   sekmesinden tek tıkla geri açabilirsin. Bunu bilmezsen "neden durdu" diye
+   uzun süre arayabilirsin.
+
+3. **İlk cron biraz sonra başlar.** Elle çalıştırdığın koşu bittikten sonra
+   ilk otomatik koşu için 10–20 dakika bekle.
+
+### C.7 — Veritabanı kalıcılığı (önemli)
+
+**Sorun:** GitHub her koşu için sıfırdan bir bilgisayar veriyor ve koşu bitince
+siliyor. Yani veritabanı da siliniyor. Veritabanı silinirse:
+
+- Telegram'a "en son hangi mesajı işledim" bilgisi kaybolur → Telegram son
+  24 saatin mesajlarını **tekrar** gönderir → aynı içerik ikinci kez işlenir
+- Kopya kontrolü geçmişi (pHash) kaybolur
+- Onay bekleyen içerikler kaybolur
+
+**Şu anki çözüm (otomatik, ayar gerekmiyor):** `worker.yml` veritabanını
+GitHub'ın cache'ine yazıyor ve bir sonraki koşuda geri alıyor. Çoğu zaman
+çalışır — ama cache 7 gün kullanılmazsa veya alan dolarsa GitHub siliyor.
+Yani **garantisi yok**.
+
+**Kalıcı çözüm (5 dakika, ücretsiz):** dışarıda bir Postgres veritabanı.
+
+1. [supabase.com](https://supabase.com) → ücretsiz hesap → **New project**
+2. Proje adı ver, bir veritabanı şifresi belirle (kaydet), bölge olarak
+   Frankfurt seç
+3. Proje açılınca: **Project Settings** → **Database** → **Connection string**
+   → **URI** sekmesi
+4. Çıkan adresi kopyala, içindeki `[YOUR-PASSWORD]` yerine 2. adımdaki şifreyi yaz
+5. Başındaki `postgresql://` kısmını `postgresql+psycopg://` yap
+6. Bunu `DATABASE_URL` adıyla secret olarak ekle (C.3)
+
+Bu ayarlandığında veri artık cache'e değil Postgres'e yazılır; cache adımı
+çalışmaya devam eder ama içi boş kalır ve bir şey ifade etmez.
+
+> Postgres sürücüsü (`psycopg`) bağımlılıklarda zaten var, ekstra kurulum yok.
+> Adresi `postgresql+psycopg://` ile başlatmayı unutma — `postgresql://`
+> yazarsan SQLAlchemy başka bir sürücü arar ve hata verir.
+
+### C.8 — Sorun giderme
+
+| Belirti | Sebep | Çözüm |
+|---|---|---|
+| Actions sekmesinde hiç workflow yok | Kod `main`'de değil | C.1 |
+| Cron hiç çalışmıyor, elle çalışıyor | Kod `main`'de değil, ya da 60 gün kuralı | C.1 / C.6 |
+| Koşu kırmızı, `Ingest` adımında patlıyor | Telegram secret'ları yanlış | C.3'teki adları birebir kontrol et |
+| `updates=0 new=0` sürekli | Bota mesaj atmamışsın ya da yanlış bota atıyorsun | Telegram'da doğru botla konuştuğunu doğrula |
+| Telefonuna hiçbir şey gelmiyor ama `delivered=1` | Botla sohbet başlatmamışsın | Bota `/start` yaz |
+| Aynı içerik iki kez işlendi | Cache düşmüş | C.7 — Postgres'e geç |
+| "You have exceeded your spending limit" | Repo private ve kota bitti | C.2 — public yap |
+| Koşu 10 dakikadan uzun sürüyor | Uzun video render ediliyor | Normal, bir şey yapma |
+
+Her koşunun logu Actions sekmesinde 90 gün duruyor — bir şey ters gittiğinde
+oradan geriye bakabilirsin.
+
+### C.9 — Durdurmak
+
+Actions → sol listeden **worker** → sağ üstteki `···` menüsü →
+**Disable workflow**. Aynı yerden tekrar açabilirsin. Kodu silmene gerek yok.
 
 ---
 

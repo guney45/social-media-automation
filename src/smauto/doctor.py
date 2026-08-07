@@ -160,10 +160,14 @@ def _check_telegram() -> Check:
 
 def _check_anthropic() -> Check:
     settings = get_settings()
+    if settings.ai_auto_disabled:
+        return Check(
+            "anthropic",
+            "warn",
+            "ANTHROPIC_API_KEY boş — AI kapatıldı (caption'ı elle yazacaksın)",
+        )
     if not settings.ai_enabled:
         return Check("anthropic", "warn", "AI_ENABLED=false — filtre ve caption devre dışı")
-    if not settings.anthropic_api_key:
-        return Check("anthropic", "fail", "ANTHROPIC_API_KEY boş")
 
     try:
         from anthropic import Anthropic
