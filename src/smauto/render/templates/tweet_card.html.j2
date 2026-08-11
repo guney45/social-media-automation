@@ -75,25 +75,6 @@ body { padding: 24px; }
 
 .text .ent { color: var(--accent); }
 
-.quote {
-  margin-top: 28px;
-  padding: 26px 28px;
-  border: 1px solid var(--border);
-  border-radius: 22px;
-  background: var(--quote-bg);
-}
-.quote .q-head { display: flex; align-items: center; gap: 12px; }
-.quote .q-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
-.quote .q-name { font-size: 27px; font-weight: 700; }
-.quote .q-handle { font-size: 25px; color: var(--muted); }
-.quote .q-text {
-  margin-top: 12px;
-  font-size: {{ (font_size * 0.78) | round | int }}px;
-  line-height: 1.34;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 .foot {
   margin-top: 32px;
   padding-top: 22px;
@@ -126,17 +107,6 @@ body { padding: 24px; }
   </div>
 
   {% if text_html %}<div class="text">{{ text_html }}</div>{% endif %}
-
-  {% if quote %}
-  <div class="quote">
-    <div class="q-head">
-      {% if quote.avatar_src %}<img class="q-avatar" src="{{ quote.avatar_src }}" alt="">{% endif %}
-      <span class="q-name">{{ quote.author_name }}</span>
-      <span class="q-handle">@{{ quote.author_handle }}</span>
-    </div>
-    {% if quote.text_html %}<div class="q-text">{{ quote.text_html }}</div>{% endif %}
-  </div>
-  {% endif %}
 
   <div class="foot">
     <span>{{ timestamp }}</span>

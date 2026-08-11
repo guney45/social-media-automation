@@ -32,6 +32,14 @@ jobs:
       DELIVERY_MODE: ${{ vars.DELIVERY_MODE || 'telegram' }}
       AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'false' }}
       STORAGE_BACKEND: ${{ vars.STORAGE_BACKEND || 'local' }}
+      OWN_ACCOUNT_NAME: ${{ vars.OWN_ACCOUNT_NAME }}
+      OWN_ACCOUNT_HANDLE: ${{ vars.OWN_ACCOUNT_HANDLE }}
+      # Must be a path the runner actually has after checkout (so: committed to
+      # the repo, not under the gitignored data/), or an https:// URL. Defaults
+      # to the avatar committed alongside this workflow.
+      OWN_ACCOUNT_AVATAR: ${{ vars.OWN_ACCOUNT_AVATAR || './assets/avatar.png' }}
+      OWN_ACCOUNT_VERIFIED: ${{ vars.OWN_ACCOUNT_VERIFIED || 'false' }}
+      FOLLOW_CTA_TEXT: ${{ vars.FOLLOW_CTA_TEXT }}
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

@@ -12,7 +12,7 @@ from smauto.db import states
 from smauto.db.models import Item
 from smauto.db.repo import add_asset, block
 from smauto.media.probe import run_ffmpeg
-from smauto.pipeline import process_once
+from smauto.pipeline import _display_text, _post_for_card, process_once
 from smauto.resolve import chain
 from smauto.resolve.base import (
     ProtectedContentError,
@@ -286,3 +286,72 @@ def test_ai_disabled_still_produces_a_caption(
     session.refresh(item)
     assert item.ai_caption
     assert item.hashtags
+
+
+# ----------------------------------------------------------------------
+# Own-account rebranding — the card and caption must never point at the
+# source's identity, and a quoted tweet must not surface a second author.
+# ----------------------------------------------------------------------
+def test_quoted_text_is_folded_in_without_a_separate_attribution(
+    session: Session, monkeypatch: pytest.MonkeyPatch, telegram: FakeTelegram, photo: Path
+) -> None:
+    post = make_post([ResolvedMedia(kind="image", local_path=photo)], text="ana metin")
+    post.quoted = ResolvedPost(
+        platform="x",
+        source_id="2",
+        source_url="https://x.com/baska/status/2",
+        author_handle="baskahesap",
+        author_name="Başka Hesap",
+        text="alıntılanan tweet metni",
+    )
+    stub_resolver(monkeypatch, post)
+    item = queue_item(session)
+
+    drain(session)
+
+    session.refresh(item)
+    assert item.text is not None
+    assert "ana metin" in item.text
+    assert "alıntılanan tweet metni" in item.text
+
+
+def test_display_text_merges_quoted_text() -> None:
+    post = make_post([], text="ana metin")
+    post.quoted = ResolvedPost(
+        platform="x", source_id="2", source_url="https://x.com/b/status/2", text="alıntı metni"
+    )
+    assert _display_text(post) == "ana metin\n\nalıntı metni"
+
+
+def test_card_uses_own_account_identity_not_the_source(
+    session: Session, settings: Settings
+) -> None:
+    settings.own_account_name = "Benim Hesabım"
+    settings.own_account_handle = "benimhesabim"
+    settings.own_account_avatar = "https://example.com/me.jpg"
+
+    item = queue_item(session)
+    item.author_handle = "baskasi"
+    item.author_name = "Başkası"
+    item.author_avatar_url = "https://example.com/baskasi.jpg"
+    item.text = "espri"
+
+    post = _post_for_card(item)
+
+    assert post.author_handle == "benimhesabim"
+    assert post.author_name == "Benim Hesabım"
+    assert post.author_avatar_url == "https://example.com/me.jpg"
+    assert post.quoted is None
+
+
+def test_card_falls_back_to_source_identity_when_own_account_unconfigured(
+    session: Session, settings: Settings
+) -> None:
+    item = queue_item(session)
+    item.author_handle = "baskasi"
+    item.author_name = "Başkası"
+
+    post = _post_for_card(item)
+
+    assert post.author_handle == "baskasi"
+    assert post.author_name == "Başkası"

@@ -14,7 +14,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from smauto.caption import writer
-from smauto.config import get_settings
+from smauto.config import Settings, get_settings
 from smauto.db import states
 from smauto.db.models import Item, MediaAsset
 from smauto.db.repo import (
@@ -28,7 +28,7 @@ from smauto.db.repo import (
 )
 from smauto.logging import get_logger
 from smauto.media.probe import FFmpegError, MediaInfo, extract_frame, probe
-from smauto.render.card import render_tweet_card
+from smauto.render.card import render_follow_card, render_tweet_card
 from smauto.render.image import render_feed
 from smauto.render.layout import FEED, REEL, max_card_height
 from smauto.render.video import render_reel
@@ -167,7 +167,7 @@ def fetch(session: Session, item: Item) -> None:
     item.author_handle = post.author_handle or item.author_handle
     item.author_name = post.author_name or item.author_name
     item.author_avatar_url = post.author_avatar_url or item.author_avatar_url
-    item.text = post.text or item.text
+    item.text = _display_text(post) or item.text
     item.lang = post.lang or item.lang
     item.source_created_at = post.created_at or item.source_created_at
 
@@ -254,6 +254,28 @@ def render(session: Session, item: Item) -> None:
     source_info = _safe_probe(source_path) if source_path else None
     is_video = bool(source_info and source_info.is_video)
 
+    # Drawn before the tweet card: its size is what tells the card renderer how
+    # much height is left, so the card can be drawn shorter but still full-width
+    # and legible rather than being scaled down afterwards.
+    follow_path: Path | None = None
+    follow_size: tuple[int, int] | None = None
+    if _follow_enabled(settings):
+        follow = render_follow_card(
+            out_dir / "follow.png", theme=intake.theme_for(session, item)  # type: ignore[arg-type]
+        )
+        follow_path = follow.path
+        follow_size = (follow.width, follow.height)
+        add_asset(
+            session,
+            item,
+            kind="render",
+            variant="follow",
+            local_path=str(follow.path),
+            width=follow.width,
+            height=follow.height,
+            mime="image/png",
+        )
+
     card_path: Path | None = None
     if item.text or not source_path:
         frame = REEL if is_video else FEED
@@ -261,7 +283,8 @@ def render(session: Session, item: Item) -> None:
             _post_for_card(item),
             out_dir / "card.png",
             theme=intake.theme_for(session, item),  # type: ignore[arg-type]
-            max_height=max_card_height(frame),
+            max_height=max_card_height(frame, follow_size),
+            verified=settings.own_account_verified,
         )
         card_path = card.path
         if card.truncated:
@@ -278,7 +301,7 @@ def render(session: Session, item: Item) -> None:
         )
 
     if is_video and source_path and settings.render_reel:
-        result = render_reel(source_path, card_path, out_dir / "reel.mp4")
+        result = render_reel(source_path, card_path, out_dir / "reel.mp4", follow=follow_path)
         for note in result.notes:
             item.add_note(note)
         add_asset(
@@ -295,7 +318,7 @@ def render(session: Session, item: Item) -> None:
         )
 
     if settings.render_feed and (not is_video or not settings.render_reel):
-        feed = render_feed(source_path, card_path, out_dir / "feed.jpg")
+        feed = render_feed(source_path, card_path, out_dir / "feed.jpg", follow=follow_path)
         add_asset(
             session,
             item,
@@ -318,9 +341,7 @@ def caption_and_deliver(session: Session, item: Item) -> None:
     transition(session, item, states.CAPTIONING, stage="captioning")
 
     if not item.caption_override:
-        result = writer.safe_write(
-            item.text, item.ai_ocr_text or "", author_handle=item.author_handle
-        )
+        result = writer.safe_write(item.text, item.ai_ocr_text or "")
         item.ai_caption = result.caption
         item.hashtags = result.hashtags
         if not result.generated:
@@ -401,17 +422,31 @@ def _safe_probe(path: Path) -> MediaInfo | None:
         return None
 
 
+def _follow_enabled(settings: Settings) -> bool:
+    """Only add the follow card once there is something to show on it."""
+    return bool(settings.own_account_handle or settings.own_account_avatar)
+
+
+def _display_text(post: ResolvedPost) -> str | None:
+    """The card shows one voice — a quoted tweet's text is folded straight in,
+    never as a nested card crediting its own author."""
+    parts = [t for t in (post.text, post.quoted.text if post.quoted else None) if t and t.strip()]
+    return "\n\n".join(parts) or None
+
+
 def _post_for_card(item: Item) -> ResolvedPost:
+    """The card always shows your own account, never the source's."""
+    settings = get_settings()
     return ResolvedPost(
         platform=item.source_platform,  # type: ignore[arg-type]
         source_id=item.source_id,
         source_url=item.source_url,
-        author_handle=item.author_handle,
-        author_name=item.author_name,
-        author_avatar_url=item.author_avatar_url,
+        author_handle=settings.own_account_handle or item.author_handle,
+        author_name=settings.own_account_name or item.author_name,
+        author_avatar_url=settings.own_account_avatar or item.author_avatar_url,
         text=item.text,
         lang=item.lang,
-        created_at=item.source_created_at,
+        created_at=item.created_at,
         media=[],
     )
 

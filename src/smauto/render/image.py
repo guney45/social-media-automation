@@ -37,6 +37,7 @@ def render_feed(
     dest: Path,
     *,
     frame: Frame = FEED,
+    follow: Path | None = None,
 ) -> ImageRenderResult:
     """Render a single still frame: blurred backdrop, media, card on top."""
     if source is None and card is None:
@@ -44,11 +45,13 @@ def render_feed(
 
     media_img = _load_rgb(source) if source else None
     card_img = _load_rgba(card) if card else None
+    follow_img = _load_rgba(follow) if follow else None
 
     placement = compose(
         frame=frame,
         card_size=card_img.size if card_img else None,
         media_size=media_img.size if media_img else None,
+        follow_size=follow_img.size if follow_img else None,
     )
 
     canvas = (
@@ -64,6 +67,11 @@ def render_feed(
         box = placement.card
         scaled_card = card_img.resize((box.width, box.height), Image.Resampling.LANCZOS)
         canvas.paste(scaled_card, (box.x, box.y), scaled_card)
+
+    if follow_img is not None and placement.follow is not None:
+        box = placement.follow
+        scaled_follow = follow_img.resize((box.width, box.height), Image.Resampling.LANCZOS)
+        canvas.paste(scaled_follow, (box.x, box.y), scaled_follow)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     out = canvas.convert("RGB")

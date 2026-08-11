@@ -111,6 +111,19 @@ def test_unknown_platform_is_refused(session: Session, fake_telegram: FakeTelegr
     assert any("tanımıyorum" in t for t in fake_telegram.texts)
 
 
+@pytest.mark.parametrize(
+    "url",
+    ["https://www.instagram.com/p/abc123/", "https://www.tiktok.com/@user/video/123"],
+)
+def test_unsupported_platform_is_refused_for_now(
+    session: Session, fake_telegram: FakeTelegram, url: str
+) -> None:
+    fake_telegram.updates = [message_update(1, url)]
+    ingest(session, client=fake_telegram)
+    assert session.query(Item).count() == 0
+    assert any("sadece X" in t for t in fake_telegram.texts)
+
+
 def test_multiple_links_in_one_message(session: Session, fake_telegram: FakeTelegram) -> None:
     fake_telegram.updates = [
         message_update(1, "https://x.com/a/status/1 ve https://x.com/b/status/2")
@@ -278,13 +291,15 @@ def test_one_bad_update_does_not_stall_the_rest(
 # ----------------------------------------------------------------------
 # Caption composition
 # ----------------------------------------------------------------------
-def test_final_caption_always_credits_the_source(session: Session) -> None:
+def test_final_caption_never_credits_the_source(session: Session) -> None:
+    """The public caption must never point back at the original author — the
+    post is meant to read as if it came from our own account."""
     item = make_item(session)
     item.author_handle = "ornek"
     item.hashtags = ["#mizah", "#komik"]
 
     caption = delivery.final_caption(item)
-    assert "@ornek via X" in caption
+    assert "@ornek" not in caption
     assert "#mizah" in caption
     assert caption.startswith("komik")
 

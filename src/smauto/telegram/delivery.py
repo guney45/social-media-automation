@@ -44,12 +44,9 @@ def review_keyboard(item_id: int) -> dict[str, Any]:
 
 
 def final_caption(item: Item) -> str:
-    """Caption plus the mandatory credit line and hashtags."""
+    """Caption plus hashtags. No source credit — it posts as your own account."""
     body = (item.caption_override or item.ai_caption or "").strip()
     parts: list[str] = [body] if body else []
-
-    if item.author_handle:
-        parts.append(f"📍 @{item.author_handle} via {_platform_label(item.source_platform)}")
 
     tags = item.hashtags
     if tags:
@@ -173,10 +170,6 @@ def report_problem(session: Session, item: Item, stage: str, error: str, *, retr
     text = f"⚠️ İşlem hatası ({label})\n{item.source_url}\n\n{error[:400]}\n\n{tail}"
     notify(item.telegram_chat_id, text)
     log_event(session, stage=stage, message="user notified of failure", item=item, level="warning")
-
-
-def _platform_label(platform: str) -> str:
-    return {"x": "X", "instagram": "Instagram", "tiktok": "TikTok"}.get(platform, platform)
 
 
 __all__ = [

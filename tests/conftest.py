@@ -31,6 +31,12 @@ def settings(tmp_path: Path) -> Iterator[Settings]:
         storage_backend="local",
         auto_publish=False,
         max_attempts=3,
+        # Explicitly isolated from the real .env — otherwise a developer's own
+        # OWN_ACCOUNT_* values (or lack of them) would leak into test results.
+        own_account_name="",
+        own_account_handle="",
+        own_account_avatar="",
+        own_account_verified=False,
     )
     set_settings(cfg)
     reset_engine()

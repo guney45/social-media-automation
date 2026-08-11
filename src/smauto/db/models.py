@@ -133,7 +133,7 @@ class MediaAsset(Base):
     item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"))
 
     kind: Mapped[str] = mapped_column(String(16))  # source | render
-    variant: Mapped[str] = mapped_column(String(16))  # original|card|reel|feed|story
+    variant: Mapped[str] = mapped_column(String(16))  # original|card|follow|reel|feed|story
     order_index: Mapped[int] = mapped_column(Integer, default=0)
 
     local_path: Mapped[str | None] = mapped_column(Text)

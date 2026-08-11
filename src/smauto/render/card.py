@@ -85,6 +85,7 @@ def render_tweet_card(
     width_px: int = CARD_WIDTH_PX,
     scale: int = DEVICE_SCALE,
     max_height: int | None = None,
+    verified: bool = False,
 ) -> CardResult:
     """Render `post` to a transparent PNG at `dest`.
 
@@ -95,7 +96,6 @@ def render_tweet_card(
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     avatar_src = _avatar_data_uri(post.author_avatar_url)
-    quote_avatar_src = _avatar_data_uri(post.quoted.author_avatar_url) if post.quoted else None
     full_text = post.text or ""
 
     from playwright.sync_api import sync_playwright
@@ -117,8 +117,8 @@ def render_tweet_card(
                         font_size=font_size,
                         width_px=width_px,
                         avatar_src=avatar_src,
-                        quote_avatar_src=quote_avatar_src,
                         text=text,
+                        verified=verified,
                     ),
                 )
 
@@ -189,8 +189,8 @@ def _build_html(
     font_size: int,
     width_px: int,
     avatar_src: str | None,
-    quote_avatar_src: str | None,
     text: str | None,
+    verified: bool,
 ) -> str:
     env = Environment(
         loader=FileSystemLoader(TEMPLATE_DIR),
@@ -200,15 +200,6 @@ def _build_html(
 
     name = post.author_name or post.author_handle or "Anonim"
     handle = post.author_handle or "bilinmiyor"
-
-    quote_ctx = None
-    if post.quoted is not None:
-        quote_ctx = {
-            "author_name": post.quoted.author_name or post.quoted.author_handle or "Anonim",
-            "author_handle": post.quoted.author_handle or "bilinmiyor",
-            "avatar_src": quote_avatar_src,
-            "text_html": _highlight(post.quoted.text),
-        }
 
     return template.render(
         c=THEMES[theme],
@@ -222,10 +213,9 @@ def _build_html(
         author_name=name,
         author_handle=handle,
         initial=(name.strip()[:1] or "?").upper(),
-        verified=False,
+        verified=verified,
         avatar_src=avatar_src,
         text_html=_highlight(text),
-        quote=quote_ctx,
         timestamp=_format_timestamp(post.created_at),
         lang=post.lang,
     )
@@ -267,9 +257,24 @@ def _format_timestamp(dt: datetime | None) -> str:
 
 
 def _avatar_data_uri(url: str | None) -> str | None:
-    """Inline the avatar so Chromium never makes a network request while rendering."""
+    """Inline the avatar so Chromium never makes a network request while rendering.
+
+    Accepts either an http(s) URL (fetched once) or a local file path — your
+    own profile photo is more likely to be a file on disk than a public URL.
+    """
     if not url:
         return None
+    if not url.lower().startswith(("http://", "https://")):
+        path = Path(url)
+        if not path.is_file():
+            log.debug("avatar path not found", path=url)
+            return None
+        try:
+            mime = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+            return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
+        except OSError as exc:
+            log.debug("avatar read failed", path=url, error=str(exc)[:120])
+            return None
     try:
         with httpx.Client(timeout=15, follow_redirects=True) as client:
             resp = client.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; smauto/0.1)"})
@@ -284,11 +289,67 @@ def _avatar_data_uri(url: str | None) -> str | None:
         return None
 
 
+#: Design width matches CARD_WIDTH_PX so it scales ~1:1 once compose() fits it
+#: to the frame's content width, and needs no font-size search — its copy is
+#: fixed and short, unlike a tweet's.
+FOLLOW_CARD_WIDTH_PX = CARD_WIDTH_PX
+
+
+def render_follow_card(
+    dest: Path,
+    *,
+    theme: Theme | None = None,
+    width_px: int = FOLLOW_CARD_WIDTH_PX,
+    scale: int = DEVICE_SCALE,
+) -> CardResult:
+    """Render the small "follow me" pill shown under the video, to a transparent PNG."""
+    theme = theme or get_settings().card_theme
+    settings = get_settings()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    name = settings.own_account_name or settings.own_account_handle or "Hesap"
+    avatar_src = _avatar_data_uri(settings.own_account_avatar)
+
+    env = Environment(
+        loader=FileSystemLoader(TEMPLATE_DIR),
+        autoescape=select_autoescape(["html", "j2"]),
+    )
+    template = env.get_template("follow_card.html.j2")
+    html = template.render(
+        c=THEMES[theme],
+        font_faces=Markup(fonts.css_font_faces()),
+        font_stack=Markup(fonts.font_stack()),
+        card_width=width_px,
+        cta_text=settings.follow_cta_text,
+        author_handle=settings.own_account_handle or "hesap",
+        initial=(name.strip()[:1] or "?").upper(),
+        avatar_src=avatar_src,
+    )
+
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(**browser_mod.launch_kwargs())  # type: ignore[arg-type]
+        try:
+            page = browser.new_page(
+                viewport={"width": width_px + 96, "height": 400},
+                device_scale_factor=scale,
+            )
+            _measure(page, html)
+            _shoot(page, dest)
+        finally:
+            browser.close()
+
+    return _result(dest, 0, truncated=False)
+
+
 __all__ = [
     "CARD_WIDTH_PX",
+    "FOLLOW_CARD_WIDTH_PX",
     "FONT_LADDER",
     "THEMES",
     "CardRenderError",
     "CardResult",
+    "render_follow_card",
     "render_tweet_card",
 ]

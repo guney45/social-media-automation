@@ -14,8 +14,9 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from smauto.config import Settings
 from smauto.media.probe import probe, run_ffmpeg
-from smauto.render.card import FONT_LADDER, render_tweet_card
+from smauto.render.card import FONT_LADDER, render_follow_card, render_tweet_card
 from smauto.render.image import render_feed
 from smauto.render.layout import REEL, max_card_height
 from smauto.render.video import MAX_DURATION_S, MIN_DURATION_S, render_reel
@@ -178,6 +179,23 @@ def test_short_card_is_not_truncated(tmp_path: Path, has_chromium: bool) -> None
     assert result.font_size == FONT_LADDER[0]
 
 
+def test_follow_card_renders_a_compact_pill(
+    tmp_path: Path, has_chromium: bool, settings: Settings
+) -> None:
+    if not has_chromium:
+        pytest.skip("no chromium available")
+    settings.own_account_name = "Test Hesap"
+    settings.own_account_handle = "testhesap"
+
+    result = render_follow_card(tmp_path / "follow.png", theme="dark")
+
+    assert result.path.exists()
+    with Image.open(result.path) as im:
+        assert im.mode == "RGBA"
+    # Compact by design — nowhere near the height of a full tweet card.
+    assert result.height < 400
+
+
 # ----------------------------------------------------------------------
 # Video — the acceptance criteria are ffprobe facts
 # ----------------------------------------------------------------------
@@ -201,6 +219,19 @@ def test_reel_output_is_instagram_ready(tmp_path: Path, clip: Path, has_chromium
     result = render_reel(clip, card, tmp_path / "reel.mp4")
     _assert_instagram_ready(result.path)
     assert result.width == 1080
+
+
+def test_reel_composites_a_follow_card_without_crashing(
+    tmp_path: Path, clip: Path, has_chromium: bool, settings: Settings
+) -> None:
+    if not has_chromium:
+        pytest.skip("no chromium available")
+    settings.own_account_name = "Test Hesap"
+    settings.own_account_handle = "testhesap"
+
+    follow = render_follow_card(tmp_path / "follow.png", theme="dark").path
+    result = render_reel(clip, None, tmp_path / "reel.mp4", follow=follow)
+    _assert_instagram_ready(result.path)
 
 
 def test_short_clip_is_looped_over_the_five_second_floor(

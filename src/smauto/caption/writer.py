@@ -25,7 +25,8 @@ Kurallar:
 - Clickbait yok, soru sorup cevap bekleme.
 - hashtags: 8-15 adet, '#' dahil, karışık Türkçe/İngilizce.
   İçerikle gerçekten ilgili olsunlar; jenerik #keşfet #kesfetteyiz spam'i yapma.
-- Kaynak etiketini SEN yazma; sistem otomatik ekliyor."""
+- Kaynağa veya başka bir hesaba/kullanıcıya referans verme; içerik senin
+  hesabından paylaşılıyormuş gibi yaz."""
 
 SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -47,7 +48,7 @@ class Caption:
     generated: bool = True
 
 
-def write(text: str | None, ocr_text: str = "", *, author_handle: str | None = None) -> Caption:
+def write(text: str | None, ocr_text: str = "") -> Caption:
     """Ask the model for a caption; fall back to something usable when AI is off."""
     settings = get_settings()
     if not settings.ai_enabled:
@@ -56,8 +57,6 @@ def write(text: str | None, ocr_text: str = "", *, author_handle: str | None = N
     prompt = INSTRUCTIONS + f"\n\nGönderi metni:\n{text or '(metin yok)'}"
     if ocr_text.strip():
         prompt += f"\n\nGörselde okunan metin:\n{ocr_text.strip()}"
-    if author_handle:
-        prompt += f"\n\nKaynak yazar: @{author_handle}"
 
     payload = call_json(
         system=SYSTEM,
@@ -74,12 +73,10 @@ def write(text: str | None, ocr_text: str = "", *, author_handle: str | None = N
     )
 
 
-def safe_write(
-    text: str | None, ocr_text: str = "", *, author_handle: str | None = None
-) -> Caption:
+def safe_write(text: str | None, ocr_text: str = "") -> Caption:
     """Never let a caption outage block delivery — the user can always edit it."""
     try:
-        return write(text, ocr_text, author_handle=author_handle)
+        return write(text, ocr_text)
     except AIError as exc:
         log.warning("caption generation unavailable", error=str(exc)[:200])
         return _fallback(text)

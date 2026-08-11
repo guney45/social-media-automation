@@ -44,8 +44,13 @@ def render_reel(
     dest: Path,
     *,
     frame: Frame = REEL,
+    follow: Path | None = None,
 ) -> VideoRenderResult:
-    """Build `dest` from `source` video with `card` overlaid above it."""
+    """Build `dest` from `source` video with `card` overlaid above it.
+
+    `follow` is a small "follow me" card overlaid below the media, when there
+    is room for it — see `compose()` for how that room is decided.
+    """
     info = probe(source)
     if info.width <= 0 or info.height <= 0:
         raise ValueError(f"source has no usable dimensions: {source}")
@@ -54,10 +59,12 @@ def render_reel(
     loops, duration_s = _duration_plan(info, notes)
 
     card_size = _png_size(card) if card else None
+    follow_size = _png_size(follow) if follow else None
     placement = compose(
         frame=frame,
         card_size=card_size,
         media_size=(info.width, info.height),
+        follow_size=follow_size,
     )
     if not placement.fits():  # pragma: no cover - compose() clamps, this is a guard
         raise ValueError("layout produced boxes outside the safe area")
@@ -66,6 +73,7 @@ def render_reel(
     args = _build_args(
         source=source,
         card=card if card_size else None,
+        follow=follow if placement.follow else None,
         dest=dest,
         info=info,
         placement=placement,
@@ -117,6 +125,7 @@ def _build_args(
     *,
     source: Path,
     card: Path | None,
+    follow: Path | None,
     dest: Path,
     info: MediaInfo,
     placement: Placement,
@@ -135,6 +144,11 @@ def _build_args(
     if card is not None and placement.card is not None:
         card_index = len(_input_indices(inputs))
         inputs += ["-i", str(card)]
+
+    follow_index: int | None = None
+    if follow is not None and placement.follow is not None:
+        follow_index = len(_input_indices(inputs))
+        inputs += ["-i", str(follow)]
 
     silent_index: int | None = None
     if not info.has_audio:
@@ -158,6 +172,12 @@ def _build_args(
         steps.append(f"[{card_index}:v]scale={box.width}:{box.height}:flags=lanczos[card]")
         steps.append(f"[{last}][card]overlay={box.x}:{box.y}[v2]")
         last = "v2"
+
+    if follow_index is not None and placement.follow is not None:
+        box = placement.follow
+        steps.append(f"[{follow_index}:v]scale={box.width}:{box.height}:flags=lanczos[follow]")
+        steps.append(f"[{last}][follow]overlay={box.x}:{box.y}[v3]")
+        last = "v3"
 
     steps.append(f"[{last}]format=yuv420p[vout]")
 

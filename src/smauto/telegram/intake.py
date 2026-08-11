@@ -38,13 +38,18 @@ _CALLBACK_RE = re.compile(r"^a:(?P<item>\d+):(?P<action>\w+)$")
 
 HELP_TEXT = (
     "Komik bir gönderi gördüğünde *Paylaş → Telegram → bu bot*.\n\n"
-    "Link atabilirsin (X, Instagram, TikTok) ya da doğrudan video/foto yükleyebilirsin.\n\n"
+    "Şimdilik sadece X (Twitter) linkleri destekleniyor. "
+    "Doğrudan video/foto da yükleyebilirsin.\n\n"
     "Komutlar:\n"
     "/status — kuyruk durumu\n"
     "/stats — son 7 gün\n"
     "/block @kullanici — kaynağı engelle\n"
     "/help — bu mesaj"
 )
+
+#: Only X/Twitter is wired up end-to-end for now — Instagram and TikTok need
+#: a different card/branding treatment before they can go live.
+SUPPORTED_PLATFORMS = frozenset({"x"})
 
 
 @dataclass(slots=True)
@@ -158,6 +163,15 @@ def _queue_url(
     if platform is None:
         summary.ignored += 1
         tg.send_message(chat_id, f"Bu platformu tanımıyorum: {url}")
+        return
+
+    if platform not in SUPPORTED_PLATFORMS:
+        summary.ignored += 1
+        tg.send_message(
+            chat_id,
+            "Şu an sadece X (Twitter) destekleniyor. "
+            "Instagram/TikTok desteği yakında ekleniyor 🙂",
+        )
         return
 
     source_id = _source_id_for(platform, url)
@@ -505,6 +519,7 @@ __all__ = [
     "AWAITING_CAPTION_KEY",
     "HELP_TEXT",
     "OFFSET_KEY",
+    "SUPPORTED_PLATFORMS",
     "IngestSummary",
     "ingest",
     "theme_for",

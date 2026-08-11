@@ -50,6 +50,15 @@ class Settings(BaseSettings):
     render_feed: bool = True
     render_story: bool = False
 
+    # --- Own account branding (card shows this identity, never the source's) ---
+    own_account_name: str = ""
+    own_account_handle: str = ""
+    #: A local file path or an https:// URL to your profile photo.
+    own_account_avatar: str = ""
+    own_account_verified: bool = False
+    #: Shown on the small "follow" card under the video.
+    follow_cta_text: str = "Daha fazlası için takip et"
+
     # --- Delivery ---
     delivery_mode: DeliveryMode = "telegram"
     auto_publish: bool = False

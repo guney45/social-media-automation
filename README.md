@@ -43,7 +43,7 @@ uv run smauto process       # indir → ele → çiz → caption → onaya gönd
 | **Resolve** | 4 katmanlı fallback: fxtwitter → yt-dlp → gallery-dl → elle yükleme |
 | **Screen** | pHash ile kopya kontrolü, AI içerik filtresi, engel listesi |
 | **Render** | Playwright ile tweet kartı, ffmpeg ile 1080×1920 Reels, Pillow ile 1080×1350 feed |
-| **Caption** | Claude ile Türkçe caption + hashtag, kaynak kredisi zorunlu |
+| **Caption** | Claude ile Türkçe caption + hashtag, kendi hesabınızın kimliğiyle |
 | **Deliver** | Telegram'da önizleme + `✅ ✏️ 🔁 ❌` butonları |
 | **Publish** | R2'ye yükler, Instagram container → publish, günde 3 sabit slot |
 
@@ -114,7 +114,8 @@ Detay: [`docs/SETUP.md`](docs/SETUP.md)
 
 Bu sistem başkalarının içeriğini yeniden yayınlıyor. Kurallar koda gömülü:
 
-- Her paylaşımda kaynak yazar caption'da etiketlenir (`@handle via X`) — kapatılamaz.
+- Kart ve caption kaynağı değil, `OWN_ACCOUNT_*` ile tanımlı kendi hesabınızın
+  kimliğini gösterir — kaynağa hiçbir referans (isim, avatar, `@handle`) verilmez.
 - Korumalı/özel hesap içeriği işlenmeden reddedilir.
 - Başka bir meme sayfasının filigranını taşıyan içerik AI filtresinde bloklanır.
 - Kaldırma talebinde `smauto unpublish <id>` postu siler ve kaynağı engel listesine alır.
