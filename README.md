@@ -1,80 +1,122 @@
-# Social Media Automation
+# social-media-automation
 
-Bu repo, X/Twitter'da seçtiğim komik içerikleri yarı otomatik bir onay akışıyla Instagram'da paylaşmak için tasarlanacak otomasyon projesinin başlangıç dokümanıdır.
+X (Twitter), Instagram ve TikTok'ta beğendiğim komik içerikleri toplayıp, Instagram'da
+paylaşıma hazır **Reels / feed görseli** olarak üreten otomasyon.
 
-## Hedef
-
-İlk sürümün hedefi tamamen kontrolsüz bir bot değil, telif ve platform kurallarına takılmamak için **insan onaylı yarı otomatik** bir sistem kurmaktır:
-
-1. X/Twitter'da beğenilen veya DM/yer imi gibi özel bir kuyruğa eklenen postları algıla.
-2. Post içindeki görsel/video medyayı ve metni çıkar.
-3. Instagram formatına uygun görsel/video üret:
-   - 1080x1350 feed görseli,
-   - 1080x1920 Reels/Story videosu,
-   - Tweet metnini üst/alt bant veya ekran görüntüsü kartı olarak yerleştirme.
-4. İçeriği taslak olarak göster ve manuel onay al.
-5. Instagram Graph API ile profesyonel hesaba paylaş.
-
-## Önerilen MVP yaklaşımı
-
-### Neden doğrudan “beğenince paylaş” değil?
-
-X/Twitter beğenileri artık hassas ve API erişimi planlara göre değişebiliyor. Bu yüzden en sağlam MVP tetikleyicisi şunlardan biridir:
-
-- X'te post linkini kendine DM atmak,
-- Telegram/Discord botuna link göndermek,
-- tarayıcı bookmarklet/extension ile “Instagram kuyruğuna ekle” butonu kullanmak,
-- en son seçenek olarak X API'den kullanıcının beğenilerini okumak.
-
-### En düşük maliyetli mimari
-
-```text
-Telefon / tarayıcı
-  -> Linki Telegram botuna veya küçük web formuna gönder
-  -> Backend kuyruğa alır
-  -> Medyayı indirir veya kullanıcının manuel yüklemesini ister
-  -> FFmpeg/Pillow ile Instagram formatına dönüştürür
-  -> Önizleme + onay ekranı
-  -> Instagram Graph API ile paylaşır
+```
+Telefonda paylaş → Telegram botu → medyayı indirir → tweet kartını çizer →
+1080x1920 Reels'e derler → caption yazar → onaya gönderir → Instagram'a basar
 ```
 
-## Platform gerçekleri
+İçerik seçimi dışındaki her adım otomatik. Son adım iki modda çalışır:
+**otomatik** (Instagram Graph API) veya **manuel** (hazır MP4 + caption Telegram'a
+düşer, sen indirip paylaşırsın).
 
-### Instagram
+---
 
-Instagram'a API ile paylaşım için genellikle Instagram Business veya Creator hesabı, bağlı Facebook Page, Meta uygulaması ve uygun izinler gerekir. Meta'nın Content Publishing dokümanı tek görsel, video, Reels ve carousel içerik yayınlamayı destekleyen akışı tarif eder.
+## Başla
 
-### X/Twitter
+**→ [`docs/KULLANIM.md`](docs/KULLANIM.md) — adım adım kurulum rehberi**
 
-X API'de beğeni uçları vardır; ancak erişim seviyesi, ücretli planlar ve özel beğeniler nedeniyle “beğendim, otomatik çek” fikri pratikte kırılgan olabilir. MVP'de link gönderme veya bookmarklet daha güvenilir olur.
+Kısa versiyon:
 
-### TikTok
+```bash
+uv sync
+uv run playwright install chromium
+uv run smauto fetch-fonts
 
-TikTok tarafında Content Posting API vardır; ileride aynı dönüştürme pipeline'ı TikTok için de kullanılabilir. İlk sürümde Instagram'a odaklanmak maliyet ve karmaşıklığı azaltır.
+cp .env.example .env        # TELEGRAM_BOT_TOKEN ve TELEGRAM_ALLOWED_USER_IDS doldur
+uv run smauto init-db
+uv run smauto doctor        # her satır ✓ olmalı
 
-## Telif ve güvenlik notları
+uv run smauto ingest        # Telegram'dan yeni linkleri al
+uv run smauto process       # indir → ele → çiz → caption → onaya gönder
+```
 
-Bu proje başkalarının içeriklerini otomatik yeniden paylaşacağı için şu kuralları ürün akışına eklemek gerekir:
+---
 
-- Her içerik için manuel onay adımı.
-- Kaynak linkini ve kullanıcı adını caption'a ekleme seçeneği.
-- İçerik sahibinden kaldırma talebi gelirse silme/blacklist akışı.
-- Özel hesaplardan, filigranlı veya açıkça izin verilmeyen içeriklerden kaçınma.
-- API tokenlarını repoya koymama; `.env` ve secret manager kullanma.
+## Ne yapıyor
 
-## İlk geliştirme adımları
+| Aşama | İş |
+|---|---|
+| **Intake** | Telegram botuna gelen link veya dosyayı kuyruğa alır |
+| **Resolve** | 4 katmanlı fallback: fxtwitter → yt-dlp → gallery-dl → elle yükleme |
+| **Screen** | pHash ile kopya kontrolü, AI içerik filtresi, engel listesi |
+| **Render** | Playwright ile tweet kartı, ffmpeg ile 1080×1920 Reels, Pillow ile 1080×1350 feed |
+| **Caption** | Claude ile Türkçe caption + hashtag, kendi hesabınızın kimliğiyle |
+| **Deliver** | Telegram'da önizleme + `✅ ✏️ 🔁 ❌` butonları |
+| **Publish** | R2'ye yükler, Instagram container → publish, günde 3 sabit slot |
 
-1. `docs/architecture.md` içindeki MVP mimarisini netleştir.
-2. Telegram botu veya basit web formu ile link toplama modülünü yaz.
-3. SQLite tabanlı içerik kuyruğu ekle.
-4. `ffmpeg` ve `pillow` ile görsel/video kompozisyon prototipi yap.
-5. Instagram Graph API sandbox/test hesabı ile yayınlama denemesi yap.
-6. Onay paneli eklemeden otomatik canlı paylaşım açma.
+Ayrıntı: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/SPEC.md`](docs/SPEC.md)
 
-## Planlanan teknoloji yığını
+---
 
-- Backend: Python + FastAPI veya Node.js + TypeScript
-- Kuyruk/veritabanı: SQLite ile başla, gerekirse Postgres'e geç
-- Medya işleme: FFmpeg, Pillow/MoviePy
-- Deploy: tek VPS, Docker Compose veya GitHub Actions + küçük sunucu
-- Tetikleyici: Telegram botu veya bookmarklet
+## Komutlar
+
+```
+smauto doctor           # ffmpeg, chromium, font, DB, token, R2 — hepsini kontrol eder
+smauto ingest           # Telegram güncellemelerini çeker
+smauto process          # kuyruğu bir aşama ilerletir
+smauto publish          # onaylananları zamanlar ve vakti geleni yayınlar
+smauto refresh-tokens   # Instagram token'ını yeniler (60 günde bir şart)
+smauto show <id>        # bir içeriğin tüm durumu
+smauto unpublish <id>   # yayından kaldır + kaynağı engelle
+smauto fetch-fonts      # Inter + Noto Color Emoji indirir
+```
+
+---
+
+## Neden bu tasarım
+
+Kararların gerekçeleri [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)'de. Özeti:
+
+- **Tetikleyici Telegram, "beğeni" değil.** Beğeni sadece X'i çözer; Telegram'ın
+  paylaş menüsü üç platformu da kapsar ve aynı bot onay arayüzü olarak da çalışır.
+  X beğeni polling'i mimaride yeri hazır bir eklenti (P6).
+- **Tweet kartı x.com screenshot'ı değil.** Kendi HTML/CSS kartımızı Chromium'da
+  çiziyoruz: login yok, deterministik, Türkçe + emoji garantili.
+- **Doğrudan ffmpeg.** Encode parametreleri sabitlenmiş (`h264 High / yuv420p /
+  30fps / AAC`), çünkü Instagram bunların dışındakileri sessizce reddediyor.
+- **P3'te sistem zaten kullanılabilir.** Meta hesabı, R2, token — hiçbiri
+  Telegram teslimi için gerekmiyor.
+
+---
+
+## Geliştirme
+
+```bash
+uv run pytest              # 140 test
+uv run pytest -m "not slow"   # gerçek ffmpeg/Chromium gerektirmeyenler
+uv run ruff check src tests
+uv run mypy src
+```
+
+Video testlerinin kabul kriteri `ffprobe` çıktısıdır, gözle kontrol değil —
+Instagram'ın reddettiği videoların çoğu gözle sorunsuz görünüyor.
+
+---
+
+## Maliyet
+
+| Kalem | Aylık |
+|---|---|
+| Telegram Bot API | $0 |
+| GitHub Actions (public repo) | $0 |
+| Cloudflare R2 (10 GB, egress yok) | $0 |
+| Anthropic API (Haiku, ~10 içerik/gün) | ~$0.30–1 |
+| **Toplam** | **~$1** |
+
+Detay: [`docs/SETUP.md`](docs/SETUP.md)
+
+---
+
+## Telif ve platform politikası
+
+Bu sistem başkalarının içeriğini yeniden yayınlıyor. Kurallar koda gömülü:
+
+- Kart ve caption kaynağı değil, `OWN_ACCOUNT_*` ile tanımlı kendi hesabınızın
+  kimliğini gösterir — kaynağa hiçbir referans (isim, avatar, `@handle`) verilmez.
+- Korumalı/özel hesap içeriği işlenmeden reddedilir.
+- Başka bir meme sayfasının filigranını taşıyan içerik AI filtresinde bloklanır.
+- Kaldırma talebinde `smauto unpublish <id>` postu siler ve kaynağı engel listesine alır.
+- `AUTO_PUBLISH=false` varsayılan — tam otomatik moda filtreye güvendikten sonra geçilir.

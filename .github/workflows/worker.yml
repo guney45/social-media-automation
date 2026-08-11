@@ -1,0 +1,108 @@
+name: worker
+
+# Drains Telegram and advances the queue.
+#
+# Cadence note: GitHub bills every job as at least one full minute. On a private
+# repo (2000 free minutes/month) a 10-minute schedule blows the quota — see
+# docs/SETUP.md §5. Make the repository public for unlimited minutes, or raise
+# the interval.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: smauto-worker
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATA_DIR: ./data
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_ALLOWED_USER_IDS: ${{ secrets.TELEGRAM_ALLOWED_USER_IDS }}
+      TELEGRAM_TARGET_CHAT_ID: ${{ secrets.TELEGRAM_TARGET_CHAT_ID }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || '' }}
+      AI_ENABLED: ${{ vars.AI_ENABLED || 'false' }}
+      DELIVERY_MODE: ${{ vars.DELIVERY_MODE || 'telegram' }}
+      AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'false' }}
+      STORAGE_BACKEND: ${{ vars.STORAGE_BACKEND || 'local' }}
+      OWN_ACCOUNT_NAME: ${{ vars.OWN_ACCOUNT_NAME }}
+      OWN_ACCOUNT_HANDLE: ${{ vars.OWN_ACCOUNT_HANDLE }}
+      # Must be a path the runner actually has after checkout (so: committed to
+      # the repo, not under the gitignored data/), or an https:// URL. Defaults
+      # to the avatar committed alongside this workflow.
+      OWN_ACCOUNT_AVATAR: ${{ vars.OWN_ACCOUNT_AVATAR || './assets/avatar.png' }}
+      OWN_ACCOUNT_VERIFIED: ${{ vars.OWN_ACCOUNT_VERIFIED || 'false' }}
+      FOLLOW_CTA_TEXT: ${{ vars.FOLLOW_CTA_TEXT }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+      IG_USER_ID: ${{ secrets.IG_USER_ID }}
+      IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+      IG_APP_ID: ${{ secrets.IG_APP_ID }}
+      IG_APP_SECRET: ${{ secrets.IG_APP_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Carries the queue, dedupe history and Telegram update offset between
+      # runs. Without it every run starts with an empty database, Telegram
+      # replays the last 24h of updates and everything is processed twice.
+      # Best-effort by design: point DATABASE_URL at Postgres (Supabase, Neon)
+      # for state you can rely on.
+      - name: Restore state
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: smauto-state-${{ github.run_id }}
+          restore-keys: smauto-state-
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg fonts-noto-color-emoji
+
+      - run: uv sync --python 3.12
+
+      - uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: uv run playwright install --with-deps chromium
+
+      - name: Install system deps for cached Chromium
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: uv run playwright install-deps chromium
+
+      - run: uv run smauto fetch-fonts
+
+      - name: Prepare database
+        run: uv run smauto init-db
+
+      - name: Ingest
+        run: uv run smauto ingest
+
+      - name: Process
+        run: uv run smauto process
+
+      # Renders are large and already uploaded to R2 in instagram mode; keeping
+      # them in the cache would blow through the 10 GB limit within days.
+      - name: Drop rendered media before caching
+        if: always()
+        run: rm -rf data/media data/public || true

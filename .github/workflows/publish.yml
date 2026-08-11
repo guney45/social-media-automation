@@ -1,0 +1,72 @@
+name: publish
+
+# Publishes whatever is due, and renews the Instagram token weekly.
+# Only does anything when DELIVERY_MODE=instagram and AUTO_PUBLISH=true.
+
+on:
+  schedule:
+    # Publish slots, in UTC. Defaults track 12:30 / 18:30 / 21:30 Europe/Istanbul
+    # (UTC+3). Adjust both this cron and PUBLISH_SLOTS together.
+    - cron: "35 9,15,18 * * *"
+    # Weekly token refresh — a lapsed 60-day token stops publishing silently.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: smauto-publish
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATA_DIR: ./data
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_ALLOWED_USER_IDS: ${{ secrets.TELEGRAM_ALLOWED_USER_IDS }}
+      TELEGRAM_TARGET_CHAT_ID: ${{ secrets.TELEGRAM_TARGET_CHAT_ID }}
+      AI_ENABLED: "false"
+      DELIVERY_MODE: ${{ vars.DELIVERY_MODE || 'telegram' }}
+      AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'false' }}
+      STORAGE_BACKEND: ${{ vars.STORAGE_BACKEND || 'local' }}
+      TIMEZONE: ${{ vars.TIMEZONE || 'Europe/Istanbul' }}
+      PUBLISH_SLOTS: ${{ vars.PUBLISH_SLOTS || '12:30,18:30,21:30' }}
+      MAX_PER_DAY: ${{ vars.MAX_PER_DAY || '3' }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+      IG_USER_ID: ${{ secrets.IG_USER_ID }}
+      IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+      IG_APP_ID: ${{ secrets.IG_APP_ID }}
+      IG_APP_SECRET: ${{ secrets.IG_APP_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Restore state
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: smauto-state-${{ github.run_id }}
+          restore-keys: smauto-state-
+
+      - run: uv sync --python 3.12
+
+      - name: Prepare database
+        run: uv run smauto init-db
+
+      - name: Refresh Instagram token
+        if: github.event.schedule == '0 4 * * 1'
+        run: uv run smauto refresh-tokens
+
+      - name: Publish what is due
+        if: github.event.schedule != '0 4 * * 1'
+        run: uv run smauto publish

@@ -1,0 +1,11 @@
+{
+  "code": 200,
+  "tweet": {
+    "url": "https://x.com/ornek/status/1800000000000000003",
+    "id": "1800000000000000003",
+    "text": "Hayatımda duyduğum en iyi tanım: pazartesi, haftanın reklamı.",
+    "author": {"name": "Örnek Hesap", "screen_name": "ornek"},
+    "created_timestamp": 1773479564,
+    "lang": "tr"
+  }
+}
