@@ -1,0 +1,17 @@
+{
+  "code": 200,
+  "tweet": {
+    "url": "https://x.com/ornek/status/1800000000000000004",
+    "id": "1800000000000000004",
+    "text": "bu ne ya 😭",
+    "author": {"name": "Örnek Hesap", "screen_name": "ornek"},
+    "created_timestamp": 1773479564,
+    "lang": "tr",
+    "quote": {
+      "id": "1799999999999999999",
+      "text": "Kombinim bugün: uyku tulumu.",
+      "author": {"name": "Alıntılanan Kişi", "screen_name": "alintilanan"},
+      "created_timestamp": 1773279564
+    }
+  }
+}
