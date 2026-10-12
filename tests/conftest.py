@@ -81,8 +81,10 @@ class FakeTelegram:
         return {"username": "testbot", "id": 1}
 
     def get_updates(self, offset: int | None = None, *, limit: int = 50, timeout_s: int = 0):
-        pending = [u for u in self.updates if offset is None or u["update_id"] >= offset]
-        return pending[:limit]
+        # Like Telegram: an offset confirms (drops) every update below it.
+        if offset is not None:
+            self.updates = [u for u in self.updates if u["update_id"] >= offset]
+        return self.updates[:limit]
 
     def _record(self, bucket: list[dict[str, Any]], payload: dict[str, Any]) -> dict[str, Any]:
         self._next_id += 1

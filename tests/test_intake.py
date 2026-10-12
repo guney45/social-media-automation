@@ -81,6 +81,19 @@ def test_offset_is_persisted_so_updates_are_not_replayed(
     assert summary.new_items == 0
 
 
+def test_update_id_reset_does_not_drop_new_messages(
+    session: Session, fake_telegram: FakeTelegram
+) -> None:
+    # After a week of silence Telegram restarts update_id at a random, possibly lower, value.
+    fake_telegram.updates = [message_update(900, "https://x.com/a/status/1")]
+    ingest(session, client=fake_telegram)
+
+    fake_telegram.updates = [message_update(5, "https://x.com/b/status/2")]
+    summary = ingest(session, client=fake_telegram)
+    assert summary.new_items == 1
+    assert fake_telegram.updates == []
+
+
 def test_duplicate_link_is_reported_not_requeued(
     session: Session, fake_telegram: FakeTelegram
 ) -> None:

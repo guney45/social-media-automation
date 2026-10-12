@@ -76,12 +76,15 @@ def ingest(
     summary = IngestSummary()
 
     try:
-        raw_offset = kv_get(session, OFFSET_KEY)
-        offset = int(raw_offset) + 1 if raw_offset else None
-        updates = tg.get_updates(offset, limit=limit)
+        # No stored offset on the read: after a week without updates Telegram
+        # restarts update_id at a random value, so a stale offset can sit above
+        # every new id — and passing it would confirm (delete) them unread.
+        # Unconfirmed updates are exactly what is pending, so read those and
+        # confirm what we handled afterwards.
+        updates = tg.get_updates(None, limit=limit)
         summary.updates = len(updates)
 
-        highest = int(raw_offset) if raw_offset else 0
+        highest = 0
         for update in updates:
             highest = max(highest, int(update.get("update_id", 0)))
             try:
@@ -90,7 +93,8 @@ def ingest(
                 summary.errors.append(str(exc)[:200])
                 log.warning("update handling failed", error=str(exc)[:300])
 
-        if highest:
+        if updates:
+            tg.get_updates(highest + 1, limit=1)
             kv_set(session, OFFSET_KEY, str(highest))
     finally:
         if own_client:
