@@ -92,6 +92,12 @@ jobs:
 
       - run: uv run smauto fetch-fonts
 
+      # Manual runs only: shows which bot the token belongs to, without leaking it.
+      - name: Doctor
+        if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        run: uv run smauto doctor
+
       - name: Prepare database
         run: uv run smauto init-db
 
