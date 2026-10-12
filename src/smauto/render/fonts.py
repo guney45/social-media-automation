@@ -92,6 +92,11 @@ def fetch_fonts(*, force: bool = False, timeout: int = 120) -> list[Path]:
         if dest.exists() and not force:
             log.info("font already present", file=dest.name)
             continue
+        # The upstream URL has moved before; a packaged font (fonts-noto-color-emoji)
+        # is the dependable source, so don't let a dead link fail the run.
+        if dest == EMOJI_FONT_FILE and not force and _system_emoji_available():
+            log.info("system emoji font present, skipping download", file=dest.name)
+            continue
         log.info("downloading font", file=dest.name)
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
             resp = client.get(url)
