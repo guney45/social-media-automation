@@ -261,7 +261,8 @@ def render(session: Session, item: Item) -> None:
     follow_size: tuple[int, int] | None = None
     if _follow_enabled(settings):
         follow = render_follow_card(
-            out_dir / "follow.png", theme=intake.theme_for(session, item)  # type: ignore[arg-type]
+            out_dir / "follow.png",
+            theme=intake.theme_for(session, item),  # type: ignore[arg-type]
         )
         follow_path = follow.path
         follow_size = (follow.width, follow.height)

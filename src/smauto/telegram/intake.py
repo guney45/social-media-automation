@@ -169,8 +169,7 @@ def _queue_url(
         summary.ignored += 1
         tg.send_message(
             chat_id,
-            "Şu an sadece X (Twitter) destekleniyor. "
-            "Instagram/TikTok desteği yakında ekleniyor 🙂",
+            "Şu an sadece X (Twitter) destekleniyor. Instagram/TikTok desteği yakında ekleniyor 🙂",
         )
         return
 
