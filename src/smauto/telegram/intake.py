@@ -39,9 +39,9 @@ _COMMAND_RE = re.compile(r"^(?P<command>\S+)\s*(?P<argument>.*)$", re.DOTALL)
 
 HELP_TEXT = (
     "Komik bir gönderi gördüğünde *Paylaş → Telegram → bu bot*.\n\n"
-    "X (Twitter) ve Instagram linkleri destekleniyor. "
+    "X (Twitter), Instagram ve TikTok linkleri destekleniyor. "
     "Doğrudan video/foto da yükleyebilirsin.\n\n"
-    "Instagram gönderilerinde karta metin basılmaz: video + takip kartı gelir, "
+    "Instagram ve TikTok gönderilerinde karta metin basılmaz: video + takip kartı gelir, "
     "hemen ardından gönderinin kendi açıklaması tek başına bir mesaj olarak "
     "düşer — basılı tutup kopyalayabilirsin.\n\n"
     "Açıklama listesi (doluysa her videonun ardından buradan rastgele biri gelir):\n"
@@ -57,9 +57,7 @@ HELP_TEXT = (
     "/help — bu mesaj"
 )
 
-#: X and Instagram are wired up end-to-end — TikTok still needs its own
-#: card/branding treatment before it can go live.
-SUPPORTED_PLATFORMS = frozenset({"x", "instagram"})
+SUPPORTED_PLATFORMS = frozenset({"x", "instagram", "tiktok"})
 
 
 @dataclass(slots=True)
@@ -185,7 +183,7 @@ def _queue_url(
         summary.ignored += 1
         tg.send_message(
             chat_id,
-            "Şu an X (Twitter) ve Instagram destekleniyor. TikTok desteği yakında ekleniyor 🙂",
+            "Şu an X (Twitter), Instagram ve TikTok destekleniyor.",
         )
         return
 

@@ -42,10 +42,10 @@ from smauto.telegram import delivery, intake
 log = get_logger(__name__)
 
 #: Platforms reshared as the bare clip — no text card drawn over the video.
-#: An Instagram post's own description is handed over as copyable text in
-#: Telegram instead (see `delivery.source_caption`), so printing it on the
-#: card as well would only duplicate it.
-CARDLESS_PLATFORMS = frozenset({"instagram"})
+#: An Instagram or TikTok post's own description is handed over as copyable
+#: text in Telegram instead (see `delivery.source_caption`), so printing it on
+#: the card as well would only duplicate it.
+CARDLESS_PLATFORMS = frozenset({"instagram", "tiktok"})
 
 
 @dataclass

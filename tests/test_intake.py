@@ -124,13 +124,13 @@ def test_unknown_platform_is_refused(session: Session, fake_telegram: FakeTelegr
     assert any("tanımıyorum" in t for t in fake_telegram.texts)
 
 
-def test_unsupported_platform_is_refused_for_now(
-    session: Session, fake_telegram: FakeTelegram
-) -> None:
-    fake_telegram.updates = [message_update(1, "https://www.tiktok.com/@user/video/123")]
+def test_tiktok_link_is_queued(session: Session, fake_telegram: FakeTelegram) -> None:
+    fake_telegram.updates = [message_update(1, "https://www.tiktok.com/@user/video/123?lang=tr")]
     ingest(session, client=fake_telegram)
-    assert session.query(Item).count() == 0
-    assert any("TikTok desteği yakında" in t for t in fake_telegram.texts)
+
+    item = session.query(Item).one()
+    assert item.source_platform == "tiktok"
+    assert item.source_id == "123"
 
 
 @pytest.mark.parametrize(

@@ -499,3 +499,20 @@ def test_description_is_picked_from_the_list(
     drain(session)
 
     assert telegram.texts[-1] in ("bir", "iki")
+
+
+def test_tiktok_video_goes_out_bare_with_its_description(
+    session: Session, monkeypatch: pytest.MonkeyPatch, telegram: FakeTelegram, clip: Path
+) -> None:
+    stub_resolver(
+        monkeypatch,
+        make_post([ResolvedMedia(kind="video", local_path=clip)], IG_CAPTION, "tiktok"),
+    )
+    item = queue_item(session, "https://www.tiktok.com/@user/video/123", platform="tiktok")
+
+    drain(session)
+
+    session.refresh(item)
+    assert item.status == states.APPROVED
+    assert item.asset("card") is None
+    assert telegram.texts == [IG_CAPTION]

@@ -33,7 +33,7 @@ ACTION_REJECT = "no"
 #: Platforms whose original description is handed over as its own message
 #: right after the preview. Keep in step with `pipeline.CARDLESS_PLATFORMS`:
 #: these are the posts whose text is not drawn on the video anywhere.
-CAPTION_HANDOFF_PLATFORMS = frozenset({"instagram"})
+CAPTION_HANDOFF_PLATFORMS = frozenset({"instagram", "tiktok"})
 
 #: Descriptions set from Telegram (/ekle, /sabitle). When any exist, every
 #: delivery hands over one of them at random instead of the source text.
