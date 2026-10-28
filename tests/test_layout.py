@@ -23,12 +23,10 @@ def _cards_within_safe_area(placement) -> bool:  # type: ignore[no-untyped-def]
     frame = placement.frame
     top = frame.content_top
     bottom = top + frame.content_height
-    for box in (placement.card, placement.follow):
-        if box is None:
-            continue
-        if box.y < top or box.bottom > bottom:
-            return False
-    return True
+    card, follow = placement.card, placement.follow
+    if card is not None and (card.y < top or card.bottom > bottom):
+        return False
+    return follow is None or (follow.y >= top and follow.bottom <= frame.follow_floor)
 
 
 @pytest.mark.parametrize(
@@ -107,10 +105,19 @@ def test_reel_safe_area_leaves_room_for_instagram_ui() -> None:
 # what is left. This is what puts the follow card in the same place in every
 # render, whatever the source was.
 # ----------------------------------------------------------------------
-def test_follow_card_is_pinned_to_the_bottom_of_the_safe_area() -> None:
+def test_follow_card_is_pinned_to_the_follow_floor() -> None:
     placement = compose(frame=REEL, card_size=None, media_size=(720, 1280), follow_size=FOLLOW)
     assert placement.follow is not None
-    assert placement.follow.bottom == REEL.content_top + REEL.content_height
+    assert placement.follow.bottom == REEL.follow_floor
+
+
+def test_reel_follow_card_sits_below_the_safe_area_but_clear_of_the_caption() -> None:
+    safe_bottom = REEL.content_top + REEL.content_height
+    assert safe_bottom < REEL.follow_floor <= REEL.height - 200
+
+
+def test_feed_follow_card_stays_at_the_bottom_of_the_safe_area() -> None:
+    assert FEED.follow_floor == FEED.content_top + FEED.content_height
 
 
 @pytest.mark.parametrize(
@@ -217,7 +224,7 @@ def test_the_follow_card_stays_visible_over_a_full_frame_media() -> None:
     placement = compose(frame=REEL, card_size=None, media_size=(720, 1280), follow_size=FOLLOW)
     assert placement.follow is not None
     # Overlaid on the media, but still clear of Instagram's own bottom UI.
-    assert placement.follow.bottom <= REEL.height - REEL.safe_bottom
+    assert placement.follow.bottom <= REEL.follow_floor
     assert placement.fits()
 
 
@@ -227,7 +234,8 @@ def test_a_card_confines_the_media_to_the_safe_area_again() -> None:
     )
     assert placement.media is not None and placement.card is not None
     assert placement.media.y >= placement.card.bottom
-    assert placement.media.bottom <= REEL.content_top + REEL.content_height
+    assert placement.follow is not None
+    assert placement.media.bottom <= placement.follow.y - REEL.gap
     assert not covers_frame(placement.media, REEL)
 
 

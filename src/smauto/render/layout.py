@@ -5,8 +5,9 @@ ends up readable or buried under Instagram's own UI, so it is worth testing on
 its own.
 
 The boxes are *anchored*, not stacked and centred as a group: the card starts
-at the top of the safe area, the follow card is pinned to the bottom of it at
-one size that never changes, and the media takes everything left between them.
+at the top of the safe area, the follow card is pinned near the bottom of the
+frame at one size that never changes, and the media takes everything left
+between them.
 Anchoring is what makes the follow card land in the same place in every render
 whatever the source was.
 
@@ -33,6 +34,9 @@ class Frame:
     safe_bottom: int
     side_margin: int
     gap: int
+    #: Distance from the frame's bottom edge to the follow card's bottom edge.
+    #: None pins it to the bottom of the safe area.
+    follow_bottom: int | None = None
 
     @property
     def content_width(self) -> int:
@@ -46,13 +50,29 @@ class Frame:
     def content_height(self) -> int:
         return self.height - self.safe_top - self.safe_bottom
 
+    @property
+    def follow_floor(self) -> int:
+        """Y coordinate the follow card's bottom edge sits on."""
+        margin = self.safe_bottom if self.follow_bottom is None else self.follow_bottom
+        return self.height - margin
+
 
 #: Reels: Instagram overlays the caption, username and action buttons over the
 #: bottom of the frame and a header over the top. Cards inside those bands are
 #: effectively invisible, so the safe area is where the cards live. The media
 #: is exempt — it is the payload, and Instagram's overlays sit on top of a
 #: full-screen reel by design.
-REEL = Frame(width=1080, height=1920, safe_top=110, safe_bottom=360, side_margin=36, gap=16)
+#: The follow card is the exception: it sits below the safe area, low enough
+#: to give the media more room but above the username and caption lines.
+REEL = Frame(
+    width=1080,
+    height=1920,
+    safe_top=110,
+    safe_bottom=360,
+    side_margin=36,
+    gap=16,
+    follow_bottom=240,
+)
 STORY = Frame(width=1080, height=1920, safe_top=250, safe_bottom=250, side_margin=36, gap=16)
 #: Feed posts are not overlaid, so the margins only need to look deliberate.
 FEED = Frame(width=1080, height=1350, safe_top=48, safe_bottom=48, side_margin=36, gap=16)
@@ -64,7 +84,7 @@ MAX_CARD_SHARE = 0.70
 #: The follow card is a nudge under the post, not a third headline. It is drawn
 #: at one absolute size — not a share of the frame — so that it reads the same
 #: and sits in the same place in every render.
-MAX_FOLLOW_HEIGHT = 160
+MAX_FOLLOW_HEIGHT = 190
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,11 +114,12 @@ class Placement:
         """
         top = self.frame.content_top
         bottom = top + self.frame.content_height
-        for box in (self.card, self.follow):
-            if box is None:
-                continue
-            if box.y < top or box.bottom > bottom:
-                return False
+        if self.card is not None and (self.card.y < top or self.card.bottom > bottom):
+            return False
+        if self.follow is not None and (
+            self.follow.y < top or self.follow.bottom > self.frame.follow_floor
+        ):
+            return False
         for box in (self.card, self.media, self.follow):
             if box is None:
                 continue
@@ -160,8 +181,8 @@ def compose(
     media_size: tuple[int, int] | None,
     follow_size: tuple[int, int] | None = None,
 ) -> Placement:
-    """Anchor the card to the top of the safe area, the follow card to the
-    bottom of it, and give the media everything in between.
+    """Anchor the card to the top of the safe area, the follow card to
+    `frame.follow_floor`, and give the media everything in between.
 
     With no card the media is placed against the whole frame instead, so a
     vertical source fills the screen and the follow card rides on top of it.
@@ -177,7 +198,7 @@ def compose(
     top = frame.content_top
     bottom = top + frame.content_height
 
-    follow_box = _follow_box(frame, follow_size, bottom)
+    follow_box = _follow_box(frame, follow_size, frame.follow_floor)
     card_box = _card_box(frame, card_size, media_size, follow_size, top)
 
     media_box: Box | None = None
