@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import random
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +12,7 @@ from sqlalchemy.orm import Session
 from smauto.config import get_settings
 from smauto.db import states
 from smauto.db.models import Item
-from smauto.db.repo import log_event, transition
+from smauto.db.repo import kv_get, kv_set, log_event, transition
 from smauto.logging import get_logger
 from smauto.telegram.client import (
     MAX_MESSAGE_CHARS,
@@ -32,6 +34,10 @@ ACTION_REJECT = "no"
 #: right after the preview. Keep in step with `pipeline.CARDLESS_PLATFORMS`:
 #: these are the posts whose text is not drawn on the video anywhere.
 CAPTION_HANDOFF_PLATFORMS = frozenset({"instagram"})
+
+#: Descriptions set from Telegram (/ekle, /sabitle). When any exist, every
+#: delivery hands over one of them at random instead of the source text.
+CAPTION_POOL_KEY = "caption_pool"
 
 
 def review_keyboard(item_id: int) -> dict[str, Any]:
@@ -74,6 +80,32 @@ def source_caption(item: Item) -> str | None:
     return (item.text or "").strip() or None
 
 
+def caption_pool(session: Session) -> list[str]:
+    raw = kv_get(session, CAPTION_POOL_KEY)
+    if not raw:
+        return []
+    try:
+        values = json.loads(raw)
+    except ValueError:
+        return []
+    return [str(v) for v in values if str(v).strip()] if isinstance(values, list) else []
+
+
+def set_caption_pool(session: Session, captions: list[str]) -> None:
+    kv_set(session, CAPTION_POOL_KEY, json.dumps(captions, ensure_ascii=False))
+
+
+def handoff_caption(session: Session, item: Item) -> str | None:
+    """The description to hand over with a delivery, or None for none at all."""
+    pool = caption_pool(session)
+    if pool:
+        return random.choice(pool)
+    text = source_caption(item)
+    if text is None and get_settings().ai_enabled:
+        text = final_caption(item) or None
+    return text
+
+
 def preview_text(item: Item) -> str:
     kind = "🎬 Reels" if item.asset("reel") else "🖼 Görsel"
     bits = [f"{kind} hazır"]
@@ -100,13 +132,17 @@ def send_for_review(session: Session, item: Item, *, client: TelegramClient | No
     own_client = client is None
     tg = client or TelegramClient()
     try:
+        if settings.delivery_mode == "telegram":
+            _deliver_for_manual_posting(session, tg, chat_id, item)
+            return
+
         markup = review_keyboard(item.id)
         caption = preview_text(item)
         message = _send_best_asset(tg, chat_id, item, caption=caption, markup=markup)
 
         item.telegram_chat_id = chat_id
         item.telegram_message_id = message.get("message_id") if message else None
-        _send_source_caption(tg, chat_id, item)
+        _send_caption(tg, chat_id, item, source_caption(item))
         transition(
             session,
             item,
@@ -119,13 +155,30 @@ def send_for_review(session: Session, item: Item, *, client: TelegramClient | No
             tg.close()
 
 
-def _send_source_caption(tg: TelegramClient, chat_id: int, item: Item) -> None:
-    """Follow the preview with the source caption, ready to be copied.
+def _deliver_for_manual_posting(
+    session: Session, tg: TelegramClient, chat_id: int, item: Item
+) -> None:
+    """Video on its own, then the description on its own — nothing to approve.
 
-    Best-effort: the preview is already delivered, and failing here would send
-    the item back through the pipeline and post the video a second time.
+    In telegram mode nothing is published automatically, so an approval step
+    only adds a tap: the item is approved the moment it is handed over.
     """
-    text = source_caption(item)
+    message = _send_best_asset(tg, chat_id, item, caption="", markup=None)
+    item.telegram_chat_id = chat_id
+    item.telegram_message_id = message.get("message_id") if message else None
+    _send_caption(tg, chat_id, item, handoff_caption(session, item))
+    transition(session, item, states.AWAITING_APPROVAL, stage="deliver", message="sent to Telegram")
+    transition(session, item, states.APPROVED, stage="deliver", message="manual posting")
+
+
+def _send_caption(tg: TelegramClient, chat_id: int, item: Item, text: str | None) -> None:
+    """Follow the preview with a description, ready to be copied.
+
+    Sent as a message of its own because Telegram's long-press "copy" yields
+    the whole message. Best-effort: the preview is already delivered, and
+    failing here would send the item back through the pipeline and post the
+    video a second time.
+    """
     if text is None:
         return
     try:
@@ -134,7 +187,7 @@ def _send_source_caption(tg: TelegramClient, chat_id: int, item: Item) -> None:
         for start in range(0, len(text), MAX_MESSAGE_CHARS):
             tg.send_message(chat_id, text[start : start + MAX_MESSAGE_CHARS])
     except TelegramError as exc:
-        log.warning("source caption handoff failed", item_id=item.id, error=str(exc)[:200])
+        log.warning("caption handoff failed", item_id=item.id, error=str(exc)[:200])
 
 
 def _send_best_asset(
@@ -143,7 +196,7 @@ def _send_best_asset(
     item: Item,
     *,
     caption: str,
-    markup: dict[str, Any],
+    markup: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     reel = item.asset("reel")
     feed = item.asset("feed")
@@ -216,11 +269,15 @@ __all__ = [
     "ACTION_REDO",
     "ACTION_REJECT",
     "CAPTION_HANDOFF_PLATFORMS",
+    "CAPTION_POOL_KEY",
+    "caption_pool",
     "final_caption",
+    "handoff_caption",
     "notify",
     "preview_text",
     "report_problem",
     "review_keyboard",
     "send_for_review",
+    "set_caption_pool",
     "source_caption",
 ]

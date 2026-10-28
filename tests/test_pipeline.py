@@ -127,7 +127,7 @@ def test_photo_post_reaches_approval(
     drain(session)
 
     session.refresh(item)
-    assert item.status == states.AWAITING_APPROVAL
+    assert item.status == states.APPROVED
     assert item.asset("feed") is not None
     assert item.asset("card") is not None
     assert item.phash
@@ -144,7 +144,7 @@ def test_video_post_produces_a_reel(
     drain(session)
 
     session.refresh(item)
-    assert item.status == states.AWAITING_APPROVAL
+    assert item.status == states.APPROVED
     reel = item.asset("reel")
     assert reel is not None
     assert (reel.width, reel.height) == (1080, 1920)
@@ -160,7 +160,7 @@ def test_text_only_post_produces_a_feed_image(
     drain(session)
 
     session.refresh(item)
-    assert item.status == states.AWAITING_APPROVAL
+    assert item.status == states.APPROVED
     assert item.asset("feed") is not None
 
 
@@ -259,7 +259,7 @@ def test_manual_upload_skips_straight_to_screening(
     drain(session)
 
     session.refresh(item)
-    assert item.status == states.AWAITING_APPROVAL
+    assert item.status == states.APPROVED
 
 
 def test_preview_caption_includes_credit_and_warnings(
@@ -316,7 +316,7 @@ def test_instagram_video_is_rendered_without_a_text_card(
     drain(session)
 
     session.refresh(item)
-    assert item.status == states.AWAITING_APPROVAL
+    assert item.status == states.APPROVED
     assert item.asset("reel") is not None
     assert item.asset("card") is None, "Instagram reshares go out as the bare clip"
 
@@ -455,3 +455,47 @@ def test_card_falls_back_to_source_identity_when_own_account_unconfigured(
 
     assert post.author_handle == "baskasi"
     assert post.author_name == "Başkası"
+
+
+# ----------------------------------------------------------------------
+# Telegram mode — no approval buttons, and a description list set from
+# Telegram replaces the source text.
+# ----------------------------------------------------------------------
+def test_telegram_mode_sends_the_bare_video_without_buttons(
+    session: Session, monkeypatch: pytest.MonkeyPatch, telegram: FakeTelegram, clip: Path
+) -> None:
+    stub_resolver(monkeypatch, make_post([ResolvedMedia(kind="video", local_path=clip)]))
+    queue_item(session)
+
+    drain(session)
+
+    video = telegram.videos[0]
+    assert video["reply_markup"] is None
+    assert video["caption"] == ""
+
+
+def test_pinned_description_replaces_the_source_caption(
+    session: Session, monkeypatch: pytest.MonkeyPatch, telegram: FakeTelegram, clip: Path
+) -> None:
+    delivery.set_caption_pool(session, ["你好 sabit açıklama"])
+    stub_resolver(
+        monkeypatch,
+        make_post([ResolvedMedia(kind="video", local_path=clip)], IG_CAPTION, "instagram"),
+    )
+    queue_instagram(session)
+
+    drain(session)
+
+    assert telegram.texts == ["你好 sabit açıklama"]
+
+
+def test_description_is_picked_from_the_list(
+    session: Session, monkeypatch: pytest.MonkeyPatch, telegram: FakeTelegram, clip: Path
+) -> None:
+    delivery.set_caption_pool(session, ["bir", "iki"])
+    stub_resolver(monkeypatch, make_post([ResolvedMedia(kind="video", local_path=clip)]))
+    queue_item(session)
+
+    drain(session)
+
+    assert telegram.texts[-1] in ("bir", "iki")

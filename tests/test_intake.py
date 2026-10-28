@@ -343,3 +343,45 @@ def test_require_telegram_rejects_an_open_bot(settings: Settings) -> None:
     set_settings(settings)
     with pytest.raises(ValueError, match="ALLOWED_USER_IDS"):
         settings.require_telegram()
+
+
+# ----------------------------------------------------------------------
+# Description list
+# ----------------------------------------------------------------------
+def test_descriptions_can_be_added_listed_and_removed(
+    session: Session, fake_telegram: FakeTelegram
+) -> None:
+    fake_telegram.updates = [
+        message_update(1, "/ekle 第一\nikinci satır"),
+        message_update(2, "/ekle başka"),
+        message_update(3, "/sil 2"),
+        message_update(4, "/liste"),
+    ]
+    ingest(session, client=fake_telegram)
+
+    assert delivery.caption_pool(session) == ["第一\nikinci satır"]
+    assert "第一" in fake_telegram.texts[-1]
+
+
+def test_pin_replaces_the_list_and_clear_empties_it(
+    session: Session, fake_telegram: FakeTelegram
+) -> None:
+    delivery.set_caption_pool(session, ["eski", "eski 2"])
+    fake_telegram.updates = [message_update(1, "/sabitle yeni")]
+    ingest(session, client=fake_telegram)
+    assert delivery.caption_pool(session) == ["yeni"]
+
+    fake_telegram.updates = [message_update(2, "/temizle")]
+    ingest(session, client=fake_telegram)
+    assert delivery.caption_pool(session) == []
+
+
+def test_replying_with_add_uses_the_replied_text(
+    session: Session, fake_telegram: FakeTelegram
+) -> None:
+    fake_telegram.updates = [
+        message_update(1, "/ekle", reply_to_message={"message_id": 9, "text": "这是 açıklama"})
+    ]
+    ingest(session, client=fake_telegram)
+
+    assert delivery.caption_pool(session) == ["这是 açıklama"]

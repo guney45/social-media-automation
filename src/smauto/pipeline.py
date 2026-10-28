@@ -133,7 +133,7 @@ def _stage(
         delivery.report_problem(session, item, stage, str(exc), retrying=retrying)
     else:
         summary.advanced += 1
-        if item.status == states.AWAITING_APPROVAL:
+        if item.status in (states.AWAITING_APPROVAL, states.APPROVED):
             summary.delivered += 1
 
 

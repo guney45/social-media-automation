@@ -35,6 +35,7 @@ AWAITING_CAPTION_KEY = "awaiting_caption"
 
 _URL_RE = re.compile(r"https?://[^\s<>\"']+")
 _CALLBACK_RE = re.compile(r"^a:(?P<item>\d+):(?P<action>\w+)$")
+_COMMAND_RE = re.compile(r"^(?P<command>\S+)\s*(?P<argument>.*)$", re.DOTALL)
 
 HELP_TEXT = (
     "Komik bir gönderi gördüğünde *Paylaş → Telegram → bu bot*.\n\n"
@@ -43,6 +44,12 @@ HELP_TEXT = (
     "Instagram gönderilerinde karta metin basılmaz: video + takip kartı gelir, "
     "hemen ardından gönderinin kendi açıklaması tek başına bir mesaj olarak "
     "düşer — basılı tutup kopyalayabilirsin.\n\n"
+    "Açıklama listesi (doluysa her videonun ardından buradan rastgele biri gelir):\n"
+    "/ekle <metin> — listeye açıklama ekle (bir mesajı yanıtlayarak da olur)\n"
+    "/sabitle <metin> — listeyi sadece bu açıklama yap\n"
+    "/liste — açıklamaları göster\n"
+    "/sil <numara> — bir açıklamayı sil\n"
+    "/temizle — listeyi boşalt (kaynağın kendi açıklamasına döner)\n\n"
     "Komutlar:\n"
     "/status — kuyruk durumu\n"
     "/stats — son 7 gün\n"
@@ -142,7 +149,9 @@ def _handle_message(
 
     if text.startswith("/"):
         summary.commands += 1
-        _handle_command(session, tg, chat_id, text)
+        reply = message.get("reply_to_message") or {}
+        reply_text = (reply.get("text") or reply.get("caption") or "").strip()
+        _handle_command(session, tg, chat_id, text, reply_text)
         return
 
     if _attach_file(session, tg, message, chat_id, summary):
@@ -308,10 +317,15 @@ def _extract_file(message: dict[str, Any]) -> tuple[str | None, str, str]:
 # ----------------------------------------------------------------------
 # Commands
 # ----------------------------------------------------------------------
-def _handle_command(session: Session, tg: TelegramClient, chat_id: int, text: str) -> None:
-    command, _, argument = text.partition(" ")
+def _handle_command(
+    session: Session, tg: TelegramClient, chat_id: int, text: str, reply_text: str = ""
+) -> None:
+    # Split on any whitespace, not just a space: a description pasted after
+    # /ekle often starts on the next line, and its own line breaks must stay.
+    match = _COMMAND_RE.match(text.strip())
+    command = match.group("command") if match else text
     command = command.split("@")[0].lower()
-    argument = argument.strip()
+    argument = match.group("argument").strip() if match else ""
 
     if command in ("/start", "/help"):
         tg.send_message(chat_id, HELP_TEXT)
@@ -347,7 +361,57 @@ def _handle_command(session: Session, tg: TelegramClient, chat_id: int, text: st
         tg.send_message(chat_id, f"🚫 @{handle} engellendi.")
         return
 
+    if command in ("/ekle", "/sabitle", "/liste", "/sil", "/temizle"):
+        _handle_caption_pool(session, tg, chat_id, command, argument or reply_text)
+        return
+
     tg.send_message(chat_id, f"Bilinmeyen komut: {command}\n\n{HELP_TEXT}")
+
+
+def _handle_caption_pool(
+    session: Session, tg: TelegramClient, chat_id: int, command: str, argument: str
+) -> None:
+    pool = delivery.caption_pool(session)
+
+    if command in ("/ekle", "/sabitle"):
+        if not argument:
+            tg.send_message(
+                chat_id, f"Kullanım: {command} <açıklama> — ya da bir mesajı yanıtlayarak yaz."
+            )
+            return
+        pool = [argument] if command == "/sabitle" else [*pool, argument]
+        delivery.set_caption_pool(session, pool)
+        if len(pool) == 1:
+            tg.send_message(chat_id, "📌 Sabitlendi. Bundan sonra her videoda bu açıklama gelecek.")
+        else:
+            tg.send_message(
+                chat_id,
+                f"➕ Eklendi. Listede {len(pool)} açıklama var, "
+                "her seferinde biri rastgele gelecek.",
+            )
+        return
+
+    if command == "/liste":
+        if not pool:
+            tg.send_message(
+                chat_id, "Liste boş — videolarla birlikte kaynağın kendi açıklaması geliyor."
+            )
+            return
+        lines = [f"{n}. {caption}" for n, caption in enumerate(pool, start=1)]
+        tg.send_message(chat_id, "📝 Açıklamalar\n\n" + "\n\n".join(lines))
+        return
+
+    if command == "/sil":
+        if not argument.isdigit() or not 1 <= int(argument) <= len(pool):
+            tg.send_message(chat_id, "Kullanım: /sil <numara> — numaraları /liste gösterir.")
+            return
+        del pool[int(argument) - 1]
+        delivery.set_caption_pool(session, pool)
+        tg.send_message(chat_id, f"🗑 Silindi. Listede {len(pool)} açıklama kaldı.")
+        return
+
+    delivery.set_caption_pool(session, [])
+    tg.send_message(chat_id, "🧹 Liste boşaltıldı — kaynağın kendi açıklamasına dönüldü.")
 
 
 # ----------------------------------------------------------------------
