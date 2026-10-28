@@ -14,7 +14,7 @@ from PIL import Image
 
 from smauto.logging import get_logger
 from smauto.media.probe import MediaInfo, probe, run_ffmpeg
-from smauto.render.layout import REEL, STORY, Frame, Placement, compose
+from smauto.render.layout import REEL, STORY, Frame, Placement, compose, covers_frame
 
 log = get_logger(__name__)
 
@@ -155,17 +155,26 @@ def _build_args(
         silent_index = len(_input_indices(inputs))
         inputs += ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
 
-    steps: list[str] = [
-        f"[0:v]scale={frame.width}:{frame.height}:force_original_aspect_ratio=increase,"
-        f"crop={frame.width}:{frame.height},gblur=sigma={BLUR_SIGMA},"
-        f"eq=brightness={BACKGROUND_DIM},setsar=1[bg]"
-    ]
+    steps: list[str] = []
+    last: str
 
-    last = "bg"
-    if media is not None:
-        steps.append(f"[0:v]scale={media.width}:{media.height}:flags=lanczos,setsar=1[fg]")
-        steps.append(f"[{last}][fg]overlay={media.x}:{media.y}[v1]")
+    if covers_frame(media, frame):
+        # The media fills the frame, so the blurred backdrop would never be
+        # seen — skipping it also saves a full gaussian pass on every frame.
+        assert media is not None
+        steps.append(f"[0:v]scale={media.width}:{media.height}:flags=lanczos,setsar=1[v1]")
         last = "v1"
+    else:
+        steps.append(
+            f"[0:v]scale={frame.width}:{frame.height}:force_original_aspect_ratio=increase,"
+            f"crop={frame.width}:{frame.height},gblur=sigma={BLUR_SIGMA},"
+            f"eq=brightness={BACKGROUND_DIM},setsar=1[bg]"
+        )
+        last = "bg"
+        if media is not None:
+            steps.append(f"[0:v]scale={media.width}:{media.height}:flags=lanczos,setsar=1[fg]")
+            steps.append(f"[{last}][fg]overlay={media.x}:{media.y}[v1]")
+            last = "v1"
 
     if card_index is not None and placement.card is not None:
         box = placement.card

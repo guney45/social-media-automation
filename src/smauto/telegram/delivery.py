@@ -13,6 +13,7 @@ from smauto.db.models import Item
 from smauto.db.repo import log_event, transition
 from smauto.logging import get_logger
 from smauto.telegram.client import (
+    MAX_MESSAGE_CHARS,
     MAX_UPLOAD_BYTES,
     InlineButton,
     TelegramClient,
@@ -26,6 +27,11 @@ ACTION_APPROVE = "ok"
 ACTION_CAPTION = "cap"
 ACTION_REDO = "redo"
 ACTION_REJECT = "no"
+
+#: Platforms whose original description is handed over as its own message
+#: right after the preview. Keep in step with `pipeline.CARDLESS_PLATFORMS`:
+#: these are the posts whose text is not drawn on the video anywhere.
+CAPTION_HANDOFF_PLATFORMS = frozenset({"instagram"})
 
 
 def review_keyboard(item_id: int) -> dict[str, Any]:
@@ -53,6 +59,19 @@ def final_caption(item: Item) -> str:
         parts.append(" ".join(tags))
 
     return "\n\n".join(parts).strip()
+
+
+def source_caption(item: Item) -> str | None:
+    """The source post's own description, or None when there is nothing to hand over.
+
+    Instagram reshares carry no text card, so this text appears nowhere else.
+    It is sent as a message of its own — no header, no emoji, no buttons —
+    because Telegram's long-press "copy" yields the *whole* message, and
+    anything wrapped around it would be pasted along with the caption.
+    """
+    if item.source_platform not in CAPTION_HANDOFF_PLATFORMS:
+        return None
+    return (item.text or "").strip() or None
 
 
 def preview_text(item: Item) -> str:
@@ -87,6 +106,7 @@ def send_for_review(session: Session, item: Item, *, client: TelegramClient | No
 
         item.telegram_chat_id = chat_id
         item.telegram_message_id = message.get("message_id") if message else None
+        _send_source_caption(tg, chat_id, item)
         transition(
             session,
             item,
@@ -97,6 +117,24 @@ def send_for_review(session: Session, item: Item, *, client: TelegramClient | No
     finally:
         if own_client:
             tg.close()
+
+
+def _send_source_caption(tg: TelegramClient, chat_id: int, item: Item) -> None:
+    """Follow the preview with the source caption, ready to be copied.
+
+    Best-effort: the preview is already delivered, and failing here would send
+    the item back through the pipeline and post the video a second time.
+    """
+    text = source_caption(item)
+    if text is None:
+        return
+    try:
+        # Telegram drops anything past the message limit rather than erroring,
+        # so split instead of handing over a silently truncated caption.
+        for start in range(0, len(text), MAX_MESSAGE_CHARS):
+            tg.send_message(chat_id, text[start : start + MAX_MESSAGE_CHARS])
+    except TelegramError as exc:
+        log.warning("source caption handoff failed", item_id=item.id, error=str(exc)[:200])
 
 
 def _send_best_asset(
@@ -177,10 +215,12 @@ __all__ = [
     "ACTION_CAPTION",
     "ACTION_REDO",
     "ACTION_REJECT",
+    "CAPTION_HANDOFF_PLATFORMS",
     "final_caption",
     "notify",
     "preview_text",
     "report_problem",
     "review_keyboard",
     "send_for_review",
+    "source_caption",
 ]

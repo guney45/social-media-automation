@@ -28,7 +28,9 @@ from smauto.resolve.base import ResolvedPost
 log = get_logger(__name__)
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
-CARD_WIDTH_PX = 984
+#: Matches `layout.REEL.content_width`, so the 2x PNG downsamples exactly 2:1
+#: onto the frame instead of being resampled at an awkward fraction.
+CARD_WIDTH_PX = 1008
 DEVICE_SCALE = 2
 
 #: Tried in order until the card fits inside `max_height`.

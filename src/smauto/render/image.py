@@ -9,7 +9,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 from smauto.logging import get_logger
-from smauto.render.layout import FEED, REEL, Frame, compose
+from smauto.render.layout import FEED, REEL, Frame, compose, covers_frame
 
 log = get_logger(__name__)
 
@@ -61,7 +61,10 @@ def render_feed(
     if media_img is not None and placement.media is not None:
         box = placement.media
         scaled = media_img.resize((box.width, box.height), Image.Resampling.LANCZOS)
-        canvas.paste(scaled, (box.x, box.y), _rounded_mask(scaled.size, CORNER_RADIUS))
+        # Rounding the corners of a full-frame image would punch four holes in
+        # it, showing the backdrop nothing else can see.
+        mask = None if covers_frame(box, frame) else _rounded_mask(scaled.size, CORNER_RADIUS)
+        canvas.paste(scaled, (box.x, box.y), mask)
 
     if card_img is not None and placement.card is not None:
         box = placement.card

@@ -41,6 +41,12 @@ from smauto.telegram import delivery, intake
 
 log = get_logger(__name__)
 
+#: Platforms reshared as the bare clip — no text card drawn over the video.
+#: An Instagram post's own description is handed over as copyable text in
+#: Telegram instead (see `delivery.source_caption`), so printing it on the
+#: card as well would only duplicate it.
+CARDLESS_PLATFORMS = frozenset({"instagram"})
+
 
 @dataclass
 class ProcessSummary:
@@ -278,7 +284,7 @@ def render(session: Session, item: Item) -> None:
         )
 
     card_path: Path | None = None
-    if item.text or not source_path:
+    if _wants_card(item, has_media=source_path is not None):
         frame = REEL if is_video else FEED
         card = render_tweet_card(
             _post_for_card(item),
@@ -423,6 +429,20 @@ def _safe_probe(path: Path) -> MediaInfo | None:
         return None
 
 
+def _wants_card(item: Item, *, has_media: bool) -> bool:
+    """Whether a text card is drawn above the media.
+
+    Without media the card *is* the post, so it is always drawn — even for a
+    platform that would otherwise go out bare, since the alternative is an
+    empty frame.
+    """
+    if not has_media:
+        return True
+    if item.source_platform in CARDLESS_PLATFORMS:
+        return False
+    return bool(item.text)
+
+
 def _follow_enabled(settings: Settings) -> bool:
     """Only add the follow card once there is something to show on it."""
     return bool(settings.own_account_handle or settings.own_account_avatar)
@@ -453,6 +473,7 @@ def _post_for_card(item: Item) -> ResolvedPost:
 
 
 __all__ = [
+    "CARDLESS_PLATFORMS",
     "ProcessSummary",
     "caption_and_deliver",
     "fetch",

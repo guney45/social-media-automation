@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageChops, ImageStat
 
 from smauto.config import Settings
 from smauto.media.probe import probe, run_ffmpeg
@@ -261,10 +261,29 @@ def test_faststart_moov_atom_is_at_the_front(tmp_path: Path, clip: Path) -> None
     assert b"moov" in head, "moov must be at the front (-movflags +faststart)"
 
 
-def test_reel_keeps_content_out_of_the_instagram_ui_bands(
+def _first_frame(video: Path, dest: Path) -> Path:
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-ss", "1", "-i", str(video)]
+    subprocess.run([*cmd, "-frames:v", "1", str(dest)], check=True)
+    return dest
+
+
+def _sharpness(image: Path, box: tuple[int, int, int, int]) -> float:
+    """Share of neighbouring pixels with a hard jump between them.
+
+    A card or unblurred video creates plenty; the blurred backdrop creates
+    almost none, which is what tells the two apart in a rendered frame.
+    """
+    with Image.open(image) as im:
+        values = list(im.convert("L").crop(box).getdata())
+    jumps = sum(1 for i in range(1, len(values)) if abs(values[i] - values[i - 1]) > 60)
+    return jumps / len(values)
+
+
+def test_reel_keeps_the_cards_out_of_the_instagram_ui_bands(
     tmp_path: Path, clip: Path, has_chromium: bool
 ) -> None:
-    """The top and bottom safe-area bands should stay as blurred background."""
+    """With a card above it the media stays inside the safe area, so the top
+    and bottom bands are left as blurred background."""
     if not has_chromium:
         pytest.skip("no chromium available")
 
@@ -272,35 +291,38 @@ def test_reel_keeps_content_out_of_the_instagram_ui_bands(
         make_post("bant testi"), tmp_path / "card.png", max_height=max_card_height(REEL)
     ).path
     result = render_reel(clip, card, tmp_path / "reel.mp4")
+    frame = _first_frame(result.path, tmp_path / "frame.png")
 
-    frame = tmp_path / "frame.png"
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-loglevel",
-            "error",
-            "-ss",
-            "2",
-            "-i",
-            str(result.path),
-            "-frames:v",
-            "1",
-            str(frame),
-        ],
-        check=True,
-    )
     with Image.open(frame) as im:
         assert im.size == (1080, 1920)
-        # A hard-edged card or video would create high local contrast; the
-        # blurred backdrop does not.
-        top_band = im.convert("L").crop((0, 0, 1080, REEL.safe_top))
-        bottom_band = im.convert("L").crop((0, 1920 - REEL.safe_bottom, 1080, 1920))
+    assert _sharpness(frame, (0, 0, 1080, REEL.safe_top)) < 0.01
+    assert _sharpness(frame, (0, 1920 - REEL.safe_bottom, 1080, 1920)) < 0.01
 
-    for band in (top_band, bottom_band):
-        values = list(band.getdata())
-        rowwise_jumps = sum(1 for i in range(1, len(values)) if abs(values[i] - values[i - 1]) > 60)
-        assert rowwise_jumps < len(values) * 0.01
+
+def test_a_vertical_source_without_a_card_fills_the_whole_frame(
+    tmp_path: Path, silent_short_clip: Path
+) -> None:
+    """The counterpart to the test above: with no card the media is not
+    confined to the safe area, so a 9:16 source reaches every edge instead of
+    being pillarboxed, and the blurred backdrop is never drawn at all.
+
+    Proven by comparing the top band against the source itself — a dimmed,
+    blurred backdrop there would differ from the source by an order of
+    magnitude more than re-encoding does.
+    """
+    result = render_reel(silent_short_clip, None, tmp_path / "reel.mp4")
+    rendered = _first_frame(result.path, tmp_path / "frame.png")
+    source = _first_frame(silent_short_clip, tmp_path / "source.png")
+
+    band = (0, 0, 1080, REEL.safe_top)
+    with Image.open(rendered) as out, Image.open(source) as src:
+        assert out.size == (1080, 1920)
+        expected = src.convert("RGB").resize((1080, 1920), Image.Resampling.LANCZOS)
+        difference = ImageChops.difference(out.convert("RGB").crop(band), expected.crop(band))
+
+    assert max(ImageStat.Stat(difference).mean) < 12, (
+        "the top band should be the source's own pixels, not a blurred backdrop"
+    )
 
 
 # ----------------------------------------------------------------------

@@ -81,11 +81,13 @@ def stub_resolver_raising(monkeypatch: pytest.MonkeyPatch, exc: Exception) -> No
     monkeypatch.setattr(chain, "resolve", _raise)
 
 
-def queue_item(session: Session, url: str = "https://x.com/ornek/status/1") -> Item:
+def queue_item(
+    session: Session, url: str = "https://x.com/ornek/status/1", *, platform: str = "x"
+) -> Item:
     item = Item(
-        source_platform="x",
+        source_platform=platform,
         source_url=url,
-        source_id=url.rsplit("/", 1)[-1],
+        source_id=url.rstrip("/").rsplit("/", 1)[-1],
         status=states.QUEUED,
         telegram_chat_id=CHAT,
     )
@@ -94,9 +96,11 @@ def queue_item(session: Session, url: str = "https://x.com/ornek/status/1") -> I
     return item
 
 
-def make_post(media: list[ResolvedMedia], text: str = "komik bir şey 😂") -> ResolvedPost:
+def make_post(
+    media: list[ResolvedMedia], text: str = "komik bir şey 😂", platform: str = "x"
+) -> ResolvedPost:
     return ResolvedPost(
-        platform="x",
+        platform=platform,  # type: ignore[arg-type]
         source_id="1",
         source_url="https://x.com/ornek/status/1",
         author_handle="ornek",
@@ -286,6 +290,102 @@ def test_ai_disabled_still_produces_a_caption(
     session.refresh(item)
     assert item.ai_caption
     assert item.hashtags
+
+
+# ----------------------------------------------------------------------
+# Instagram — no text card on the video, and the source description comes
+# back as a message of its own so it can be copied straight out of Telegram.
+# ----------------------------------------------------------------------
+IG_URL = "https://www.instagram.com/reel/abc123"
+IG_CAPTION = "kedim sabah 7'de\n\nher gün aynı hikaye 😹 #kedi"
+
+
+def queue_instagram(session: Session) -> Item:
+    return queue_item(session, IG_URL, platform="instagram")
+
+
+def test_instagram_video_is_rendered_without_a_text_card(
+    session: Session, monkeypatch: pytest.MonkeyPatch, telegram: FakeTelegram, clip: Path
+) -> None:
+    stub_resolver(
+        monkeypatch,
+        make_post([ResolvedMedia(kind="video", local_path=clip)], IG_CAPTION, "instagram"),
+    )
+    item = queue_instagram(session)
+
+    drain(session)
+
+    session.refresh(item)
+    assert item.status == states.AWAITING_APPROVAL
+    assert item.asset("reel") is not None
+    assert item.asset("card") is None, "Instagram reshares go out as the bare clip"
+
+
+def test_instagram_description_arrives_as_its_own_copyable_message(
+    session: Session, monkeypatch: pytest.MonkeyPatch, telegram: FakeTelegram, clip: Path
+) -> None:
+    stub_resolver(
+        monkeypatch,
+        make_post([ResolvedMedia(kind="video", local_path=clip)], IG_CAPTION, "instagram"),
+    )
+    queue_instagram(session)
+
+    drain(session)
+
+    assert telegram.videos, "the reel should have been delivered first"
+    handoff = telegram.messages[-1]
+    assert handoff["text"] == IG_CAPTION, "nothing may be wrapped around the caption"
+    assert "reply_markup" not in handoff
+
+
+def test_instagram_post_without_a_description_sends_no_extra_message(
+    session: Session, monkeypatch: pytest.MonkeyPatch, telegram: FakeTelegram, clip: Path
+) -> None:
+    stub_resolver(
+        monkeypatch, make_post([ResolvedMedia(kind="video", local_path=clip)], "", "instagram")
+    )
+    queue_instagram(session)
+
+    drain(session)
+
+    assert telegram.videos
+    assert telegram.messages == []
+
+
+def test_x_post_still_gets_its_card_and_no_extra_message(
+    session: Session, monkeypatch: pytest.MonkeyPatch, telegram: FakeTelegram, clip: Path
+) -> None:
+    stub_resolver(monkeypatch, make_post([ResolvedMedia(kind="video", local_path=clip)]))
+    item = queue_item(session)
+
+    drain(session)
+
+    session.refresh(item)
+    assert item.asset("card") is not None
+    assert telegram.messages == []
+
+
+def test_instagram_post_without_media_still_gets_a_card(
+    session: Session, monkeypatch: pytest.MonkeyPatch, telegram: FakeTelegram
+) -> None:
+    """A card is the only thing left to render — dropping it would render nothing."""
+    stub_resolver(monkeypatch, make_post([], "sadece metin", "instagram"))
+    item = queue_instagram(session)
+
+    drain(session)
+
+    session.refresh(item)
+    assert item.asset("card") is not None
+    assert item.asset("feed") is not None
+
+
+def test_source_caption_is_only_handed_over_for_instagram(session: Session) -> None:
+    item = queue_item(session)
+    item.text = "tweet metni"
+    assert delivery.source_caption(item) is None
+
+    item.source_platform = "instagram"
+    assert delivery.source_caption(item) == "tweet metni"
 
 
 # ----------------------------------------------------------------------

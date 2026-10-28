@@ -38,8 +38,11 @@ _CALLBACK_RE = re.compile(r"^a:(?P<item>\d+):(?P<action>\w+)$")
 
 HELP_TEXT = (
     "Komik bir gönderi gördüğünde *Paylaş → Telegram → bu bot*.\n\n"
-    "Şimdilik sadece X (Twitter) linkleri destekleniyor. "
+    "X (Twitter) ve Instagram linkleri destekleniyor. "
     "Doğrudan video/foto da yükleyebilirsin.\n\n"
+    "Instagram gönderilerinde karta metin basılmaz: video + takip kartı gelir, "
+    "hemen ardından gönderinin kendi açıklaması tek başına bir mesaj olarak "
+    "düşer — basılı tutup kopyalayabilirsin.\n\n"
     "Komutlar:\n"
     "/status — kuyruk durumu\n"
     "/stats — son 7 gün\n"
@@ -47,9 +50,9 @@ HELP_TEXT = (
     "/help — bu mesaj"
 )
 
-#: Only X/Twitter is wired up end-to-end for now — Instagram and TikTok need
-#: a different card/branding treatment before they can go live.
-SUPPORTED_PLATFORMS = frozenset({"x"})
+#: X and Instagram are wired up end-to-end — TikTok still needs its own
+#: card/branding treatment before it can go live.
+SUPPORTED_PLATFORMS = frozenset({"x", "instagram"})
 
 
 @dataclass(slots=True)
@@ -173,7 +176,7 @@ def _queue_url(
         summary.ignored += 1
         tg.send_message(
             chat_id,
-            "Şu an sadece X (Twitter) destekleniyor. Instagram/TikTok desteği yakında ekleniyor 🙂",
+            "Şu an X (Twitter) ve Instagram destekleniyor. TikTok desteği yakında ekleniyor 🙂",
         )
         return
 

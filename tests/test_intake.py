@@ -124,17 +124,32 @@ def test_unknown_platform_is_refused(session: Session, fake_telegram: FakeTelegr
     assert any("tanımıyorum" in t for t in fake_telegram.texts)
 
 
-@pytest.mark.parametrize(
-    "url",
-    ["https://www.instagram.com/p/abc123/", "https://www.tiktok.com/@user/video/123"],
-)
 def test_unsupported_platform_is_refused_for_now(
-    session: Session, fake_telegram: FakeTelegram, url: str
+    session: Session, fake_telegram: FakeTelegram
 ) -> None:
-    fake_telegram.updates = [message_update(1, url)]
+    fake_telegram.updates = [message_update(1, "https://www.tiktok.com/@user/video/123")]
     ingest(session, client=fake_telegram)
     assert session.query(Item).count() == 0
-    assert any("sadece X" in t for t in fake_telegram.texts)
+    assert any("TikTok desteği yakında" in t for t in fake_telegram.texts)
+
+
+@pytest.mark.parametrize(
+    ("url", "source_id"),
+    [
+        ("https://www.instagram.com/reel/abc123/", "abc123"),
+        ("https://www.instagram.com/p/xyz789/?igsh=deadbeef", "xyz789"),
+    ],
+)
+def test_instagram_link_is_queued(
+    session: Session, fake_telegram: FakeTelegram, url: str, source_id: str
+) -> None:
+    fake_telegram.updates = [message_update(1, url)]
+    summary = ingest(session, client=fake_telegram)
+
+    assert summary.new_items == 1
+    item = session.query(Item).one()
+    assert item.source_platform == "instagram"
+    assert item.source_id == source_id
 
 
 def test_multiple_links_in_one_message(session: Session, fake_telegram: FakeTelegram) -> None:

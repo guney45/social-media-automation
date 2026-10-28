@@ -4,19 +4,26 @@ import pytest
 
 from smauto.render.layout import (
     FEED,
+    MAX_FOLLOW_HEIGHT,
     REEL,
+    Box,
     compose,
+    covers_frame,
     follow_height_in_frame,
     max_card_height,
     max_follow_height,
 )
 
+FOLLOW = (1968, 190)
 
-def _within_safe_area(placement) -> bool:  # type: ignore[no-untyped-def]
+
+def _cards_within_safe_area(placement) -> bool:  # type: ignore[no-untyped-def]
+    """The cards must stay out of Instagram's UI bands. The media may not —
+    filling the frame is deliberate, see `compose()`."""
     frame = placement.frame
     top = frame.content_top
     bottom = top + frame.content_height
-    for box in (placement.card, placement.media, placement.follow):
+    for box in (placement.card, placement.follow):
         if box is None:
             continue
         if box.y < top or box.bottom > bottom:
@@ -36,10 +43,10 @@ def _within_safe_area(placement) -> bool:  # type: ignore[no-untyped-def]
         ((1968, 3000), None),
     ],
 )
-def test_boxes_stay_inside_the_safe_area(card, media) -> None:
-    placement = compose(frame=REEL, card_size=card, media_size=media)
+def test_boxes_stay_where_they_belong(card, media) -> None:
+    placement = compose(frame=REEL, card_size=card, media_size=media, follow_size=FOLLOW)
     assert placement.fits()
-    assert _within_safe_area(placement)
+    assert _cards_within_safe_area(placement)
 
 
 def test_media_never_collapses_when_the_card_is_huge() -> None:
@@ -78,14 +85,6 @@ def test_aspect_ratio_is_preserved() -> None:
     assert abs(ratio - 16 / 9) < 0.02
 
 
-def test_content_is_vertically_centred() -> None:
-    placement = compose(frame=REEL, card_size=(1968, 600), media_size=(1080, 1080))
-    assert placement.card is not None and placement.media is not None
-    top_gap = placement.card.y - REEL.content_top
-    bottom_gap = (REEL.content_top + REEL.content_height) - placement.media.bottom
-    assert abs(top_gap - bottom_gap) <= 2
-
-
 def test_feed_frame_is_four_by_five() -> None:
     assert FEED.width == 1080
     assert FEED.height == 1350
@@ -103,71 +102,70 @@ def test_reel_safe_area_leaves_room_for_instagram_ui() -> None:
 
 
 # ----------------------------------------------------------------------
-# The "follow me" card: least important box in the frame. It gets a small
-# reserved slice, the card is never scaled down to make room for it (that
-# shrinks the text with it), and the three boxes centre as one group.
+# Anchoring: the card starts at the top of the safe area, the follow card is
+# pinned to the bottom of it at a size that never varies, and the media fills
+# what is left. This is what puts the follow card in the same place in every
+# render, whatever the source was.
 # ----------------------------------------------------------------------
-def test_follow_box_uses_leftover_space_and_the_group_stays_centred() -> None:
-    """Plenty of leftover room: card and media keep their exact size, the
-    follow card fits below them, and the whole three-box group re-centres
-    together — no dead gap left at the bottom of the frame."""
-    card, media = (1968, 600), (1280, 720)  # small media leaves lots of leftover room
-    without = compose(frame=REEL, card_size=card, media_size=media)
-    with_follow = compose(frame=REEL, card_size=card, media_size=media, follow_size=(1968, 300))
+def test_follow_card_is_pinned_to_the_bottom_of_the_safe_area() -> None:
+    placement = compose(frame=REEL, card_size=None, media_size=(720, 1280), follow_size=FOLLOW)
+    assert placement.follow is not None
+    assert placement.follow.bottom == REEL.content_top + REEL.content_height
 
-    assert with_follow.card is not None and without.card is not None
-    assert with_follow.media is not None and without.media is not None
-    assert with_follow.card.height == without.card.height
-    assert with_follow.media.height == without.media.height
-    assert with_follow.follow is not None
-    assert with_follow.follow.y >= with_follow.media.bottom
-    assert _within_safe_area(with_follow)
 
-    top_margin = with_follow.card.y - REEL.content_top
-    bottom_margin = (REEL.content_top + REEL.content_height) - with_follow.follow.bottom
-    assert abs(top_margin - bottom_margin) <= 2
+@pytest.mark.parametrize(
+    "card,media",
+    [
+        (None, (720, 1280)),
+        (None, (1280, 720)),
+        ((1968, 700), (720, 1280)),
+        ((1968, 4000), (1080, 1080)),
+        ((1968, 300), None),
+    ],
+)
+def test_follow_card_lands_in_the_same_place_whatever_the_source(card, media) -> None:
+    """The whole point of pinning it: one fixed size, one fixed position."""
+    reference = compose(frame=REEL, card_size=None, media_size=(1080, 1080), follow_size=FOLLOW)
+    placement = compose(frame=REEL, card_size=card, media_size=media, follow_size=FOLLOW)
+
+    assert reference.follow is not None and placement.follow is not None
+    assert placement.follow == reference.follow
+
+
+def test_card_always_starts_at_the_top_of_the_safe_area() -> None:
+    for media in (None, (720, 1280), (1280, 720)):
+        placement = compose(frame=REEL, card_size=(1968, 700), media_size=media, follow_size=FOLLOW)
+        assert placement.card is not None
+        assert placement.card.y == REEL.content_top
+
+
+def test_a_taller_card_shrinks_the_media_rather_than_moving_it() -> None:
+    short = compose(frame=REEL, card_size=(1968, 500), media_size=(720, 1280), follow_size=FOLLOW)
+    tall = compose(frame=REEL, card_size=(1968, 1500), media_size=(720, 1280), follow_size=FOLLOW)
+
+    assert short.media is not None and tall.media is not None
+    assert tall.media.height < short.media.height
+    assert short.card is not None and tall.card is not None
+    assert short.card.y == tall.card.y
 
 
 def test_card_is_never_scaled_narrower_than_the_content_width() -> None:
     """Scaling a finished card PNG down shrinks its text too, which is what
     made the card unreadable. A card drawn within its budget must be placed at
     full content width, follow card or not."""
-    card_size = (1968, 2 * max_card_height(REEL, (1968, 244)))  # exactly the budget, at 2x
-    placement = compose(
-        frame=REEL, card_size=card_size, media_size=(720, 1280), follow_size=(1968, 244)
-    )
+    # A 2x card drawn to exactly its budget, expressed in the PNG's own pixels.
+    budget = max_card_height(REEL, FOLLOW)
+    card_size = (2016, int((budget - 4) * 2016 / REEL.content_width))
+    placement = compose(frame=REEL, card_size=card_size, media_size=(720, 1280), follow_size=FOLLOW)
     assert placement.card is not None
     assert placement.card.width == REEL.content_width
 
 
 def test_card_budget_shrinks_to_reserve_room_for_the_follow_card() -> None:
-    follow = (1968, 244)
-    assert max_card_height(REEL, follow) < max_card_height(REEL)
+    assert max_card_height(REEL, FOLLOW) < max_card_height(REEL)
     # The difference is exactly the follow card plus the gap between them.
-    reserved = max_card_height(REEL) - max_card_height(REEL, follow)
-    assert reserved == follow_height_in_frame(REEL, follow) + REEL.gap
-
-
-def test_media_absorbs_the_reserve_and_the_group_fills_the_content_area() -> None:
-    """A tall source that would otherwise fill the frame: the media gives up
-    the follow card's slice, and the result still fills the content area
-    exactly rather than leaving a dead band at the bottom."""
-    card, media = (1968, 700), (1080, 1920)
-    without = compose(frame=REEL, card_size=card, media_size=media)
-    with_follow = compose(frame=REEL, card_size=card, media_size=media, follow_size=(1968, 244))
-
-    assert with_follow.card is not None and without.card is not None
-    assert with_follow.media is not None and without.media is not None
-    assert with_follow.follow is not None
-    # The card keeps its size and full width; the media absorbs the reserve.
-    assert with_follow.card.height == without.card.height
-    assert with_follow.card.width == REEL.content_width
-    assert with_follow.media.height < without.media.height
-    assert _within_safe_area(with_follow)
-
-    top_margin = with_follow.card.y - REEL.content_top
-    bottom_margin = (REEL.content_top + REEL.content_height) - with_follow.follow.bottom
-    assert top_margin <= 2 and bottom_margin <= 2
+    reserved = max_card_height(REEL) - max_card_height(REEL, FOLLOW)
+    assert reserved == follow_height_in_frame(REEL, FOLLOW) + REEL.gap
 
 
 def test_no_follow_size_means_no_follow_box() -> None:
@@ -175,12 +173,12 @@ def test_no_follow_size_means_no_follow_box() -> None:
     assert placement.follow is None
 
 
-def test_follow_box_is_capped_even_with_abundant_leftover_space() -> None:
+def test_follow_box_is_capped_at_an_absolute_height() -> None:
     placement = compose(
         frame=REEL, card_size=None, media_size=(1280, 720), follow_size=(1968, 3000)
     )
     assert placement.follow is not None
-    assert placement.follow.height <= max_follow_height(REEL)
+    assert placement.follow.height <= max_follow_height(REEL) <= MAX_FOLLOW_HEIGHT
 
 
 def test_follow_box_respects_aspect_ratio_when_capped() -> None:
@@ -201,3 +199,58 @@ def test_follow_box_dimensions_are_even_for_h264() -> None:
     assert placement.follow.height % 2 == 0
     assert placement.follow.x % 2 == 0
     assert placement.follow.y % 2 == 0
+
+
+# ----------------------------------------------------------------------
+# Filling the frame: without a card the media is not confined to the safe
+# area, which is the only way a vertical source avoids being pillarboxed.
+# ----------------------------------------------------------------------
+def test_a_vertical_source_fills_the_frame_when_there_is_no_card() -> None:
+    placement = compose(frame=REEL, card_size=None, media_size=(720, 1280), follow_size=FOLLOW)
+    assert placement.media is not None
+    assert (placement.media.width, placement.media.height) == (REEL.width, REEL.height)
+    assert (placement.media.x, placement.media.y) == (0, 0)
+    assert covers_frame(placement.media, REEL)
+
+
+def test_the_follow_card_stays_visible_over_a_full_frame_media() -> None:
+    placement = compose(frame=REEL, card_size=None, media_size=(720, 1280), follow_size=FOLLOW)
+    assert placement.follow is not None
+    # Overlaid on the media, but still clear of Instagram's own bottom UI.
+    assert placement.follow.bottom <= REEL.height - REEL.safe_bottom
+    assert placement.fits()
+
+
+def test_a_card_confines_the_media_to_the_safe_area_again() -> None:
+    placement = compose(
+        frame=REEL, card_size=(1968, 700), media_size=(720, 1280), follow_size=FOLLOW
+    )
+    assert placement.media is not None and placement.card is not None
+    assert placement.media.y >= placement.card.bottom
+    assert placement.media.bottom <= REEL.content_top + REEL.content_height
+    assert not covers_frame(placement.media, REEL)
+
+
+def test_a_square_source_is_never_cropped_to_fill_the_frame() -> None:
+    """Filling the frame is a contain fit, not a cover crop — a square source
+    keeps every pixel and simply sits on the backdrop."""
+    placement = compose(frame=REEL, card_size=None, media_size=(1080, 1080), follow_size=FOLLOW)
+    assert placement.media is not None
+    assert placement.media.width == REEL.width
+    assert placement.media.height == REEL.width  # still square
+    assert not covers_frame(placement.media, REEL)
+
+
+def test_media_and_cards_sit_tight_together() -> None:
+    placement = compose(
+        frame=REEL, card_size=(1968, 700), media_size=(1080, 1920), follow_size=FOLLOW
+    )
+    assert placement.card is not None and placement.media is not None
+    assert placement.follow is not None
+    assert placement.media.y - placement.card.bottom <= REEL.gap + 2
+    assert placement.follow.y - placement.media.bottom <= REEL.gap + 2
+
+
+def test_covers_frame_is_false_for_nothing() -> None:
+    assert covers_frame(None, REEL) is False
+    assert covers_frame(Box(x=0, y=0, width=REEL.width, height=REEL.height - 2), REEL) is False
