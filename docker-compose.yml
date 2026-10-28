@@ -1,0 +1,56 @@
+# VPS deployment. Latency drops from ~10 minutes (GitHub Actions cron) to
+# seconds, and there is no free-minute budget to worry about.
+#
+#   docker compose build
+#   docker compose run --rm smauto doctor
+#   docker compose run --rm smauto init-db
+#   docker compose up -d worker publisher
+
+services:
+  smauto:
+    build: .
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    profiles: ["cli"]
+
+  worker:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      'while true; do
+         uv run smauto ingest || true;
+         uv run smauto process || true;
+         sleep 60;
+       done'
+
+  publisher:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    entrypoint: ["/bin/sh", "-c"]
+    # Publishing checks the schedule itself, so a coarse loop is enough.
+    command: >
+      'while true; do
+         uv run smauto publish || true;
+         sleep 600;
+       done'
+
+  token-refresh:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      'while true; do
+         uv run smauto refresh-tokens || true;
+         sleep 604800;
+       done'

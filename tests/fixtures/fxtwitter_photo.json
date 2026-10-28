@@ -1,0 +1,36 @@
+{
+  "code": 200,
+  "message": "OK",
+  "tweet": {
+    "url": "https://x.com/ornek/status/1800000000000000001",
+    "id": "1800000000000000001",
+    "text": "Bu kedi resmen benim sabahlarım 😹 https://t.co/abc123",
+    "author": {
+      "name": "Örnek Hesap",
+      "screen_name": "ornek",
+      "avatar_url": "https://pbs.twimg.com/profile_images/1/avatar.jpg",
+      "protected": false
+    },
+    "created_at": "Fri Mar 14 09:12:44 +0000 2026",
+    "created_timestamp": 1773479564,
+    "lang": "tr",
+    "media": {
+      "all": [
+        {
+          "type": "photo",
+          "url": "https://pbs.twimg.com/media/photo1.jpg",
+          "width": 1200,
+          "height": 900
+        }
+      ],
+      "photos": [
+        {
+          "type": "photo",
+          "url": "https://pbs.twimg.com/media/photo1.jpg",
+          "width": 1200,
+          "height": 900
+        }
+      ]
+    }
+  }
+}
